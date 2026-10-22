@@ -71,6 +71,9 @@ public final class Sim {
     public static final class Hole {
         public float x, y, w;
         public boolean vis;
+        /** PoolHole.effect_type (Arcade): 0 normal, 1 lubang hitam,
+         * 4 lubang -bola, 5 lubang +cue. Mode lain selalu 0. */
+        public int effect;
     }
 
     public static final class Result {
@@ -82,6 +85,19 @@ public final class Sim {
         public int firstContact = -1;
         public boolean cuePotted;
         public int steps;
+        // v1.3 — pelacakan cushion untuk tangga expert (bank/kick/safety):
+        /** bola i menyentuh cushion setidaknya sekali selama simulasi */
+        public boolean[] cushionHit;
+        /** bola i masuk lubang SESUDAH menyentuh cushion (bank murni) */
+        public boolean[] potAfterRail;
+        /** jumlah sentuhan cushion per bola (bank multi-rel Mustahil) */
+        public int[] cushionHitCount;
+        /** bola putih menyentuh cushion SEBELUM kontak bola pertama */
+        public boolean cueRailFirst;
+        /** ada cushion tersentuh SESUDAH kontak pertama (syarat anti-foul safety) */
+        public boolean railAfterContact;
+        /** bola putih menyentuh cushion sesudah kontak pertama */
+        public boolean cueRailAfterContact;
 
         @SuppressWarnings("unchecked")
         Result(int n, boolean record) {
@@ -89,6 +105,9 @@ public final class Sim {
             this.potHole = new int[n];
             this.stopX = new float[n];
             this.stopY = new float[n];
+            this.cushionHit = new boolean[n];
+            this.potAfterRail = new boolean[n];
+            this.cushionHitCount = new int[n];
             for (int i = 0; i < n; i++) {
                 this.potHole[i] = -1;
             }
@@ -155,6 +174,28 @@ public final class Sim {
         return proto[i];
     }
 
+    /**
+     * Majukan proto ke keadaan sesudah satu tembakan (untuk perencanaan
+     * rantai run-out Mustahil): posisi = posisi berhenti hasil, bola
+     * yang masuk menjadi non-aktif, semua kecepatan/spin dinolkan.
+     */
+    public void advanceProto(Result r) {
+        for (int i = 0; i < proto.length; i++) {
+            Ball p = proto[i];
+            p.x = r.stopX[i];
+            p.y = r.stopY[i];
+            p.vx = 0.0f;
+            p.vy = 0.0f;
+            p.rvx = 0.0f;
+            p.rvy = 0.0f;
+            p.w = 0.0f;
+            p.inHole = -1;
+            boolean nowPotted = p.potted || r.potted[i];
+            p.potted = nowPotted;
+            p.avail = !nowPotted;
+        }
+    }
+
     /** Geser posisi bola pada proto (untuk pencarian titik freeball). */
     public void setProtoPosition(int i, float x, float y) {
         Ball b = proto[i];
@@ -195,6 +236,15 @@ public final class Sim {
         for (int i = 0; i < balls.length; i++) {
             balls[i].copyFrom(proto[i]);
         }
+        // Bola yang SUDAH potted di snapshot (keadaan turunan rantai
+        // run-out / evaluasi posisi) tidak boleh dilaporkan sebagai
+        // "masuk oleh tembakan ini" — kalau tidak, saringan akan
+        // menolaknya sebagai bola ilegal dan rantai Mustahil mustahil
+        // terbentuk (bug terbukti di uji l).
+        boolean[] wasPotted = new boolean[balls.length];
+        for (int i = 0; i < balls.length; i++) {
+            wasPotted[i] = balls[i].potted;
+        }
         Result r = new Result(balls.length, record);
         applyClick(strength, spinX, spinY, angleDeg);
         if (record) {
@@ -215,10 +265,10 @@ public final class Sim {
         r.steps = steps;
         for (int i = 0; i < balls.length; i++) {
             Ball b = balls[i];
-            r.potted[i] = b.potted;
+            r.potted[i] = b.potted && !wasPotted[i];
             r.stopX[i] = b.x;
             r.stopY[i] = b.y;
-            if (b.potted && r.potHole[i] < 0) {
+            if (r.potted[i] && r.potHole[i] < 0) {
                 r.potHole[i] = nearestHole(b.x, b.y);
             }
             if (record) {
@@ -228,7 +278,7 @@ public final class Sim {
                 }
             }
         }
-        r.cuePotted = balls[clickTarget].potted;
+        r.cuePotted = r.potted[clickTarget];
         return r;
     }
 
@@ -301,6 +351,18 @@ public final class Sim {
                 }
             }
         } else if (hittype == 1) {
+            r.cushionHit[hita] = true;
+            r.cushionHitCount[hita]++;
+            if (r.firstContact < 0) {
+                if (hita == clickTarget) {
+                    r.cueRailFirst = true;
+                }
+            } else {
+                r.railAfterContact = true;
+                if (hita == clickTarget) {
+                    r.cueRailAfterContact = true;
+                }
+            }
             doHitBlocker(balls[hita], blockers[hitb]);
         } else if (hittype == 2) {
             balls[hita].inHole = hitb;
@@ -308,6 +370,7 @@ public final class Sim {
             Ball b = balls[hita];
             Hole h = holes[b.inHole];
             r.potHole[hita] = b.inHole;
+            r.potAfterRail[hita] = r.cushionHit[hita];
             b.x = h.x;
             b.y = h.y;
             b.avail = false;

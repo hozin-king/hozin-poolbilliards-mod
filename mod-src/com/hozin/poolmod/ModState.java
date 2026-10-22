@@ -15,6 +15,20 @@ public final class ModState {
     public static volatile boolean longLineOn = true;
     public static volatile boolean autoOn = false;
 
+    // tingkat kesulitan Auto Play (Perintah 6): 0 Normal, 1 Expert
+    // (bawaan), 2 Mustahil — mengubah kedalaman pencarian & gaya,
+    // tidak pernah mengubah aturan keras legalitas.
+    public static volatile int difficulty = 1;
+
+    // pengaman Perintah 2: jumlah kegagalan merencanakan berturut-turut
+    // pada mode Auto Play ON; mencapai 3 -> saklar mati sendiri.
+    public static volatile int autoFailCount = 0;
+
+    // true selama Anim menjalankan satu siklus tembakan (penempatan /
+    // spin / putar / tarik / hentak / tunggu berhenti) — pemicu
+    // pencarian baru ditahan selama siklus berjalan.
+    public static volatile boolean animBusy = false;
+
     // mesin pemicu auto play otomatis (diisi Hooks di thread game):
     // pasangan (state,giliran) stabil -> dua probe posisi berjarak
     // >=700 ms yang sama -> pencarian; autoHoldKey mencegah pengulangan

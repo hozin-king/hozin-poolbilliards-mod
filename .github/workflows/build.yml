@@ -50,6 +50,7 @@ jobs:
             mod-src/com/hozin/poolmod/ModState.java \
             mod-src/com/hozin/poolmod/Ref.java \
             mod-src/com/hozin/poolmod/Auto.java \
+            mod-src/com/hozin/poolmod/Objective.java \
             tests/TestSim.java tests/TestAuto.java
           java -cp /tmp/simtest com.hozin.poolmod.TestSim
           java -cp /tmp/simtest com.hozin.poolmod.TestAuto
@@ -62,13 +63,13 @@ jobs:
       - name: Verifikasi APK final
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
-        run: python3 verify.py PoolBilliardsPro-Mod-v1.2.apk "original/Pool_Billiards_Pro_5.3.apk"
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.3.apk "original/Pool_Billiards_Pro_5.3.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: poolbilliards-mod-apk
-          path: PoolBilliardsPro-Mod-v1.2.apk
+          path: PoolBilliardsPro-Mod-v1.3.apk
 
       - name: Buat GitHub Release (hanya tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -81,44 +82,68 @@ jobs:
             terpisah), dibangun GitHub Actions dari sumber di repo ini,
             lolos uji konsistensi klon fisika (JVM) dan verify.py.
 
-            Perbaikan v1.2 (dari kegagalan uji HP v1.1):
-            1. GARIS PREDIKSI HILANG — akar terbukti dari kode game:
-               setiap pergantian game/ronde, game membangun ulang
-               anak-anak PoolTable (GameScene.setRule/showGameEnd ->
-               PoolTable.reset() -> ContainerBase.clear()). Container
-               garis mod ikut terhapus dari instance meja yang sama,
-               dan pemeriksaan lama hanya berjalan saat instance meja
-               berganti — garis mati permanen tanpa gejala lain.
-               Sekarang kehadiran container diverifikasi & dipasang
-               ulang pada SETIAP tick bidik dan setiap panggilan gambar.
-            2. AUTO PLAY terasa "tolol" — logika v1.1 terbukti benar
-               pada harness JVM berkode game asli (target legal, pot
-               bersih, tanpa scratch), tetapi pemilihannya didominasi
-               uji perturbasi sehingga tembakan jauh bisa mengalahkan
-               pot dekat yang paling enak, dan kekuatan selalu besar.
-               v1.2: ketahanan menjadi syarat (robust >= 3 bila ada),
-               skor kemudahan (potong kecil, jarak pendek, kekuatan
-               kecil) yang memutuskan, plus pelunakan kekuatan
-               pasca-pilih (turun bertahap selama tetap kokoh).
-            3. READOUT KEPUTUSAN di menu: grup legal terdeteksi,
-               jumlah kandidat, penolakan per alasan (scratch/kontak/
-               bola lawan/bola 8 dini), bola + lubang + kekuatan yang
-               dipilih atau alasan tidak menembak; baris diagnosis
-               prediksi (berapa segmen tergambar / kenapa tidak).
+            Baru di v1.3 (perintah user 22 Okt 21:23-21:34 + audit Arcade):
 
-            Fitur lain tetap: target legal dari PoolRule
-            .isAvailableTarget, saringan keras anti-scratch/anti-bola
-            -lawan, saklar "Auto Play Otomatis", long line
-            (calcAimTarget asli), menu melayang MOD.
+            1. EKSEKUSI TERANIMASI, bukan teleport: stik ASLI game
+               digerakkan lewat state bidiknya sendiri - spin ditulis
+               dulu ke state kontrol spin game (titik merah berpindah),
+               stik berputar halus ke sudut terpilih, tertarik mundur
+               sebanding kekuatan (jarak stik memang fungsi aimStrength
+               di kode game), menghentak, lalu jalur resmi
+               GameScene.shoot() memanggil PoolTable.click() tepat
+               satu kali dengan nilai state tersebut. Sesudah tembakan:
+               tunggu meja berhenti + jeda natural.
+            2. AUTO PLAY = saklar ON/OFF: berantai tiap giliran sampai
+               dimatikan / permainan selesai. Pengaman: 3x gagal
+               merencanakan berturut-turut -> saklar mati sendiri +
+               alasan tertulis di readout. Di PvP saklar tidak bisa ON.
+            3. PENEMPATAN FREE BALL OTOMATIS: posisi dipilih dari
+               kualitas tembakan terbaiknya (validasi rule.canPut
+               game), bola DIGESER teranimasi ke titik terpilih lalu
+               dikonfirmasi lewat putFreeball() game; fallback
+               penempatan pengaman bila tak ada tembakan legal.
+            4. PERENCANA EXPERT - tangga keputusan (tidak menyerah
+               selama ada suapan legal): Pot -> Bank -> Kick/rail-first
+               -> Combination -> Safety expert (bola putih bersembunyi)
+               -> Breakout cluster -> Upaya paling tidak buruk. Aturan
+               keras diperluas ke SIMULASI PENUH: bola non-target masuk
+               dari jalur mana pun (pantulan/tabtrakan sekunder) =
+               kandidat dibuang; bola 8 dini & scratch dibuang; penalti
+               bila bola lawan berakhir dekat mulut lubang. Pot dinilai
+               juga dari posisi lanjutan 2 langkah (position play)
+               sebagai penentu sekunder.
+            5. TINGKAT KESULITAN: NORMAL (pot langsung + safety
+               sederhana, sampling kasar, tanpa kesalahan buatan) /
+               EXPERT (bawaan; tangga penuh + 2 langkah) / MUSTAHIL
+               (pencarian sangat rapat + PERENCANAAN RUN-OUT: urutan
+               menghabiskan semua bola grup + bola 8 direncanakan
+               sebagai rantai, dieksekusi langkah demi langkah dengan
+               perencanaan ulang; anggaran berpikir maks ~3 detik).
+               Aturan keras legalitas sama di semua tingkat.
+            6. MODE ARCADE (LevelRule): objektif diganti total - semua
+               bola target sah (multi-pot = keuntungan combo),
+               mata uang restTime dibaca hidup ("sisa stik N" di
+               readout), LUBANG HITAM (effect_type 1) terlarang di
+               semua tingkat, lubang +cue/-bola bernilai bonus,
+               safety diganti setup/breakout. Fungsi objektif
+               per-mode kini titik sisip terpisah di perencana.
 
-            BATAS KERAS: semua fitur mati total di mode PvP online
-            (rule.isPVPMode()) — latch + pemeriksaan di setiap titik
-            masuk fitur, menu disembunyikan. Hanya untuk mode offline:
-            VS Computer, Time, Arcade/Level, Tutorial. IAP/koin/stik
-            dan jaringan tidak disentuh.
+            Warisan v1.2 tetap: perbaikan garis prediksi hilang
+            (container ter-reset game dipasang ulang tiap tick),
+            readout keputusan lengkap (tingkat tangga + tingkat
+            kesulitan + kandidat/ditolak per sebab + alasan).
 
-            Catatan: logika lolos uji skenario JVM di CI (termasuk
-            layout screenshot uji HP 20:08 dan uji pulih-sesudah-reset
-            pada harness lokal berkode Basket asli); perilaku runtime
-            persis di perangkat adalah tahap uji di HP.
-          files: PoolBilliardsPro-Mod-v1.2.apk
+            BATAS KERAS tidak berubah: semua fitur mati total di mode
+            PvP online (rule.isPVPMode()) - gerbang diperiksa ulang
+            tepat sebelum tembakan dieksekusi. Hanya mode offline.
+
+            Catatan kejujuran teknis: rantai run-out panjang &
+            tembakan multi-pantulan ekstrem paling peka terhadap
+            selisih float klon-vs-native; yang diklaim adalah
+            parameter dihitung eksak dari simulasi, bukan kepastian
+            bola masuk. Uji JVM di CI: 17 skenario TestAuto + TestSim
+            (termasuk posisi terjepit screenshot user, jebakan bola
+            salah sekunder, Normal-vs-Mustahil, 3 skenario Arcade)
+            + harness siklus animasi ujung-ke-ujung.
+
+          files: PoolBilliardsPro-Mod-v1.3.apk

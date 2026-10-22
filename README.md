@@ -80,6 +80,7 @@ Uji JVM (tanpa Android) — konsistensi klon fisika + logika autoplay:
 javac -d /tmp/t mod-src/com/hozin/poolmod/Sim.java \
   mod-src/com/hozin/poolmod/Snap.java mod-src/com/hozin/poolmod/ModState.java \
   mod-src/com/hozin/poolmod/Ref.java mod-src/com/hozin/poolmod/Auto.java \
+  mod-src/com/hozin/poolmod/Objective.java \
   tests/TestSim.java tests/TestAuto.java
 java -cp /tmp/t com.hozin.poolmod.TestSim
 java -cp /tmp/t com.hozin.poolmod.TestAuto

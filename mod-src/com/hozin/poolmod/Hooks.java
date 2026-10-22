@@ -17,7 +17,6 @@ package com.hozin.poolmod;
  */
 public final class Hooks {
     private static final Class<?>[] SIG_INT = {int.class};
-    private static final Class<?>[] SIG_FFFF = {float.class, float.class, float.class, float.class};
 
     private static long lastPredictKey = Long.MIN_VALUE;
     private static Sim predictSim;
@@ -103,23 +102,32 @@ public final class Hooks {
         if (ModState.pvpLatched) {
             Predict.hideAll();
             ModState.autoRequested = false;
+            ModState.autoOn = false; // saklar Auto Play mati paksa di PvP
             Auto.pendingExec = null;
+            Anim.cancel();
             return;
         }
 
-        // --- eksekusi autoplay tertunda (dari thread pencarian) ---
+        // --- hasil pencarian -> mulai siklus animasi eksekusi ---
         Auto.Shot shot = Auto.pendingExec;
         if (shot != null) {
             Auto.pendingExec = null;
-            executeShot(scene, table, rule, roundstate, shot);
+            Snap sn = Auto.pendingSnap;
+            Auto.pendingSnap = null;
+            if (!Anim.isRunning()) {
+                Anim.begin(shot, sn);
+            }
         }
+
+        // --- gerakkan siklus animasi (stik asli game, bukan teleport) ---
+        Anim.tick(scene, table, rule, roundstate);
 
         // --- permintaan autoplay baru dari menu ---
         if (ModState.autoRequested) {
             ModState.autoRequested = false;
-            if (!ModState.autoBusy
+            if (!ModState.autoBusy && !Anim.isRunning()
                     && (state == 3 || (state == 1 && ptype == 0))) {
-                Auto.startSearch(table, rule, roundstate, state);
+                Auto.startSearch(table, rule, roundstate, state, false);
             }
         }
 
@@ -146,7 +154,8 @@ public final class Hooks {
                                          int state, int ptype) {
         boolean humanAim = state == 1 && ptype == 0;
         boolean humanFree = state == 3 && ptype == 0;
-        if (!ModState.autoOn || ModState.autoBusy || Auto.pendingExec != null
+        if (!ModState.autoOn || ModState.autoBusy || ModState.animBusy
+                || Auto.pendingExec != null
                 || !(humanAim || humanFree)) {
             ModState.autoPair = -1;
             ModState.autoProbeKey = Long.MIN_VALUE;
@@ -180,65 +189,13 @@ public final class Hooks {
                 ModState.autoHoldKey = key;
                 // GERBANG PvP segar tepat sebelum memicu pencarian
                 if (!Ref.invokeB(rule, "isPVPMode")) {
-                    Auto.startSearch(table, rule, roundstate, state);
+                    Auto.startSearch(table, rule, roundstate, state, true);
                 }
             }
         } else {
             ModState.autoProbeKey = key;
             ModState.autoProbeMs = now;
         }
-    }
-
-    private static void executeShot(Object scene, Object table, Object rule,
-                                    Object roundstate, Auto.Shot s) {
-        // GERBANG PvP di titik eksekusi (pemeriksaan segar)
-        if (Ref.invokeB(rule, "isPVPMode")) {
-            return;
-        }
-        Snap snap = Auto.pendingSnap;
-        Auto.pendingSnap = null;
-        int state = Ref.getI(roundstate, "state");
-        if (s.freeball) {
-            if (state != 3) {
-                return;
-            }
-            if (snap == null || !snap.stillMatches(table)) {
-                return;
-            }
-            Object[] ballsArr = (Object[]) Ref.get(table, "balls");
-            if (ballsArr == null || snap.clickTarget >= ballsArr.length) {
-                return;
-            }
-            Object cue = ballsArr[snap.clickTarget];
-            if (cue == null || !snap.canPut(s.spotX, s.spotY)) {
-                return;
-            }
-            Ref.setF(cue, "x", s.spotX);
-            Ref.setF(cue, "y", s.spotY);
-            Ref.invoke(table, "putFreeball", new Class<?>[0]);
-            state = Ref.getI(roundstate, "state");
-        } else {
-            if (snap != null && !snap.stillMatches(table)) {
-                return; // meja sudah berubah sejak pencarian
-            }
-        }
-        if (state != 1) {
-            return;
-        }
-        int current = Ref.getI(roundstate, "currentPlayer");
-        if (Ref.invokeI(rule, "getPlayerType", SIG_INT, current) != 0) {
-            return;
-        }
-        // samakan visual bidik scene dengan tembakan terpilih
-        Ref.setF(scene, "aimAngle", s.angle);
-        Ref.setF(scene, "aimStrength", s.strength);
-        Ref.setF(scene, "aimPx", s.spinX);
-        Ref.setF(scene, "aimPy", s.spinY);
-        Ref.invoke(scene, "calcAimTarget", new Class<?>[0]);
-        // jalur resmi yang sama dengan pemain & AI: PoolTable.click
-        Ref.invoke(table, "click", SIG_FFFF, s.strength, s.spinX, s.spinY, s.angle);
-        Predict.hideAll();
-        lastPredictKey = Long.MIN_VALUE;
     }
 
     private static void updatePrediction(Object scene, Object table, Object rule,

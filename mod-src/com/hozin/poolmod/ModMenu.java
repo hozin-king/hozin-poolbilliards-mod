@@ -49,7 +49,14 @@ public final class ModMenu {
     private static boolean panelOpen;
     private static TextView statusView;
     private static TextView diagView;
+    private static Switch swAutoState;
+    private static Button diffBtn;
     private static boolean watchdogOn;
+
+    static String diffLabel() {
+        int d = ModState.difficulty;
+        return "Kesulitan: " + (d == 0 ? "NORMAL" : (d == 2 ? "MUSTAHIL" : "EXPERT"));
+    }
 
     private ModMenu() {
     }
@@ -110,6 +117,7 @@ public final class ModMenu {
         ModState.predictOn = prefs.getBoolean("predictOn", true);
         ModState.longLineOn = prefs.getBoolean("longLineOn", true);
         ModState.autoOn = prefs.getBoolean("autoOn", false);
+        ModState.difficulty = prefs.getInt("diff", 1);
 
         // --- tombol MOD ---
         btnMod = new TextView(act);
@@ -192,13 +200,17 @@ public final class ModMenu {
         panel.addView(swLong);
 
         Switch swAuto = new Switch(act);
-        swAuto.setText("Auto Play Otomatis");
+        swAuto.setText("Auto Play");
+        swAutoState = swAuto;
         swAuto.setTextColor(Color.WHITE);
         swAuto.setChecked(ModState.autoOn);
         swAuto.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton b, boolean checked) {
                 ModState.autoOn = checked;
+                if (checked) {
+                    ModState.autoFailCount = 0;
+                }
                 // posisi meja saat ini tidak boleh langsung ditembak:
                 // lupakan probe & tahan sampai meja berubah/stabil lagi
                 ModState.autoProbeKey = Long.MIN_VALUE;
@@ -208,6 +220,26 @@ public final class ModMenu {
             }
         });
         panel.addView(swAuto);
+
+        // pemilih kesulitan Auto Play (Perintah 6): ketuk = putar
+        // Normal -> Expert -> Mustahil; bawaan Expert.
+        diffBtn = new Button(act);
+        diffBtn.setText(diffLabel());
+        diffBtn.setTextColor(Color.WHITE);
+        diffBtn.setBackground(roundBg(Color.rgb(35, 55, 70), dp(act, 10), 0));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        dlp.topMargin = dp(act, 8);
+        diffBtn.setLayoutParams(dlp);
+        diffBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ModState.difficulty = (ModState.difficulty + 1) % 3;
+                diffBtn.setText(diffLabel());
+                savePrefs(act);
+            }
+        });
+        panel.addView(diffBtn);
 
         Button auto = new Button(act);
         auto.setText("AUTO PLAY");
@@ -250,6 +282,7 @@ public final class ModMenu {
                     .putBoolean("predictOn", ModState.predictOn)
                     .putBoolean("longLineOn", ModState.longLineOn)
                     .putBoolean("autoOn", ModState.autoOn)
+                    .putInt("diff", ModState.difficulty)
                     .apply();
         } catch (Throwable ignored) {
         }
@@ -346,6 +379,15 @@ public final class ModMenu {
     private static void updateStatus() {
         if (statusView == null) {
             return;
+        }
+        // sinkronkan saklar Auto Play dengan keadaan sebenarnya —
+        // saklar bisa mati sendiri (3x gagal / masuk PvP) dan itu
+        // harus terlihat di menu, bukan diam-diam.
+        if (swAutoState != null && swAutoState.isChecked() != ModState.autoOn) {
+            swAutoState.setChecked(ModState.autoOn);
+        }
+        if (diffBtn != null) {
+            diffBtn.setText(diffLabel());
         }
         String mode = ModState.modeLabel;
         String m;

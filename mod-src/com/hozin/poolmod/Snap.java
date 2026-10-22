@@ -37,6 +37,13 @@ public final class Snap {
     /** Bola penentu menang: 8 untuk Vsai8Ball, 9 untuk Vsai9Ball, -1 lain. */
     public int moneyBall = -1;
 
+    /** Mode Arcade (rule LevelRule): objektif & saringan khusus —
+     * semua bola target sah, mata uang restTime, lubang spesial. */
+    public boolean arcade;
+    /** Sisa tembakan Arcade dari LevelRule$GameRoundState.restTime
+     * (dibaca hidup tiap snapshot; -1 di mode lain / tak terbaca). */
+    public int restTime = -1;
+
     // referensi hidup — hanya untuk canPut (baca-saja) & info kelas rule
     private Object ruleObj;
     private Object ballsArrObj;
@@ -73,6 +80,10 @@ public final class Snap {
             s.currentPlayer = Ref.getI(roundstate, "currentPlayer");
             s.moneyBall = s.ruleClass.startsWith("Vsai8") ? 8
                     : (s.ruleClass.startsWith("Vsai9") ? 9 : -1);
+            s.arcade = s.ruleClass.equals("LevelRule");
+            if (s.arcade) {
+                s.restTime = Ref.getI(roundstate, "restTime");
+            }
             captureLegal(s, rule, roundstate, ballsArr);
 
             s.balls = new Sim.Ball[ballsArr.length];
@@ -115,6 +126,7 @@ public final class Snap {
                     sh.y = Ref.getF(h, "y");
                     sh.w = Ref.invokeF(h, "getWidth", 140.0f);
                     sh.vis = Ref.invokeB(h, "isVisible");
+                    sh.effect = Ref.getI(h, "effect_type");
                 }
                 s.holes[i] = sh;
             }
@@ -122,6 +134,40 @@ public final class Snap {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * Snapshot turunan dengan bola/legal diganti (untuk langkah rantai
+     * run-out): semua parameter meja & referensi rule diwarisi; hanya
+     * daftar bola dan daftar legal yang baru. canPut turunan tetap
+     * memakai rule hidup (posisi bola lain diabaikan canPut bawaan
+     * selain array asli — turunan TIDAK dipakai untuk canPut).
+     */
+    public Snap derive(Sim.Ball[] newBalls, boolean[] newLegal) {
+        Snap d = new Snap();
+        d.balls = newBalls;
+        d.blockers = blockers;
+        d.holes = holes;
+        d.force = force;
+        d.rollForce = rollForce;
+        d.holeGravity = holeGravity;
+        d.ballRadius = ballRadius;
+        d.tableW = tableW;
+        d.tableH = tableH;
+        d.minStrength = minStrength;
+        d.maxStrength = maxStrength;
+        d.firstShoot = firstShoot;
+        d.clickTarget = clickTarget;
+        d.ruleClass = ruleClass;
+        d.currentPlayer = currentPlayer;
+        d.legal = newLegal;
+        d.legalKnown = legalKnown;
+        d.moneyBall = moneyBall;
+        d.arcade = arcade;
+        d.restTime = restTime;
+        d.ruleObj = ruleObj;
+        d.ballsArrObj = ballsArrObj;
+        return d;
     }
 
     /** Sim baru yang sudah diisi snapshot ini (proto = state snapshot). */

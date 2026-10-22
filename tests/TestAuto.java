@@ -104,10 +104,10 @@ public final class TestAuto {
         check(!Auto.passesFilter(s, trap, null),
                 "saringan menolak pot bola lawan tanpa target sendiri");
         Auto.Shot shot = Auto.searchShot(s);
-        check(shot == null || shot.safety || shot.targetBall != 9,
+        check(shot == null || shot.level != Auto.LV_POT || shot.targetBall != 9,
                 "autoplay tidak memilih bola lawan (hasil: "
-                        + (shot == null ? "tidak menembak" : shot.safety ? "pengaman" : "bola " + shot.targetBall) + ")");
-        if (shot != null && !shot.safety) {
+                        + (shot == null ? "tidak menembak" : "tingkat " + shot.level + " bola " + shot.targetBall) + ")");
+        if (shot != null && shot.level == Auto.LV_POT) {
             check(shot.targetBall == 1, "pot yang dipilih adalah bola kita");
         }
     }
@@ -130,7 +130,7 @@ public final class TestAuto {
         check(shot != null, "autoplay tetap menemukan jalan (pot bersih/pengaman)");
         Sim.Result r = resim(s, shot);
         check(!r.cuePotted, "tembakan terpilih TIDAK men-scratch bola putih");
-        if (!shot.safety) {
+        if (shot.level <= Auto.LV_COMBO) {
             check(r.potted[shot.targetBall], "pot terpilih benar-benar masuk di simulasi ulang");
         }
     }
@@ -146,7 +146,7 @@ public final class TestAuto {
             s.legal[i] = true;
         }
         Auto.Shot shot = Auto.searchShot(s);
-        check(shot != null && !shot.safety, "ada pot legal untuk solids");
+        check(shot != null && shot.level == Auto.LV_POT, "ada pot legal untuk solids");
         check(shot.targetBall == 2, "yang ditargetkan solid kita, bukan stripe lawan (dapat "
                 + shot.targetBall + ")");
         Sim.Result r = resim(s, shot);
@@ -158,7 +158,7 @@ public final class TestAuto {
         put(s2, 8, 0f, -400f);
         s2.legal[8] = true;
         Auto.Shot shot2 = Auto.searchShot(s2);
-        check(shot2 != null && !shot2.safety && shot2.targetBall == 8,
+        check(shot2 != null && shot2.level == Auto.LV_POT && shot2.targetBall == 8,
                 "bola 8 ditargetkan sesudah grup habis");
         Sim.Result r2 = resim(s2, shot2);
         check(r2.potted[8] && !r2.cuePotted, "bola 8 masuk bersih");
@@ -175,7 +175,7 @@ public final class TestAuto {
             s.legal[i] = true;
         }
         Auto.Shot shot = Auto.searchShot(s);
-        check(shot != null && !shot.safety, "meja terbuka: ada pot");
+        check(shot != null && shot.level == Auto.LV_POT, "meja terbuka: ada pot");
         Sim.Result r = resim(s, shot);
         int[] out = new int[2];
         check(Auto.passesFilter(s, r, out) && out[0] > 0,
@@ -270,7 +270,7 @@ public final class TestAuto {
         }
         Auto.Shot shot = Auto.searchShot(s);
         check(shot != null, "ada tembakan pada layout screenshot");
-        check(!shot.safety, "yang dipilih pot, bukan pengaman (ada pot bersih)");
+        check(shot.level == Auto.LV_POT, "yang dipilih pot langsung (ada pot bersih)");
         check(shot.targetBall >= 9 && shot.targetBall <= 15,
                 "target adalah stripe milik pemain (dapat " + shot.targetBall + ")");
         Sim.Result r = resim(s, shot);
@@ -294,11 +294,29 @@ public final class TestAuto {
         s.balls[0].y = -60f;
         s.balls[10].x = 0f;
         s.balls[10].y = -350f;
+        // bola 12 dipindah ke pot yang BENAR-BENAR lebih sulit tapi
+        // tetap bisa masuk: ke lubang kiri-atas, potongan ~35 derajat,
+        // travel bola ~800 (posisi aslinya di layout ternyata pot
+        // lurus ~0 derajat — premis lama keliru secara geometri)
+        s.balls[12].x = -500f;
+        s.balls[12].y = -500f;
         for (int i = 9; i <= 15; i++) {
             s.legal[i] = true;
         }
+        // buktikan pot 12 memang ada (ghost lurus ke kiri-atas masuk)
+        {
+            Sim sim0 = s.newSim();
+            float hx = -1290f, hy = -628f;
+            float dx = hx - -500f, dy = hy - -500f;
+            float len = (float) Math.sqrt(dx * dx + dy * dy);
+            float gx = -500f - dx / len * 94.3f;
+            float gy = -500f - dy / len * 94.3f;
+            float ang = (float) Math.toDegrees(Math.atan2(gy - -60f, gx - 30f));
+            Sim.Result rp = sim0.simulate(1500f, 0f, 0f, ang, false);
+            check(rp.potted[12], "pot jauh bola 12 terverifikasi bisa masuk");
+        }
         Auto.Shot shot = Auto.searchShot(s);
-        check(shot != null && !shot.safety, "ada pot pada skenario preferensi");
+        check(shot != null && shot.level == Auto.LV_POT, "ada pot pada skenario preferensi");
         check(shot.targetBall == 10,
                 "pot lurus pendek (bola 10) yang dipilih, bukan pot jauh (dapat "
                         + shot.targetBall + ")");
@@ -318,12 +336,167 @@ public final class TestAuto {
         check(shot == null || (shot.targetBall >= 1 && shot.targetBall <= 7),
                 "stripe tidak pernah ditargetkan saat solids yang legal (dapat "
                         + (shot == null ? "diam" : shot.targetBall) + ")");
-        if (shot != null && !shot.safety) {
+        if (shot != null && shot.level <= Auto.LV_COMBO) {
             Sim.Result r = resim(s, shot);
             check(r.potted[shot.targetBall] && !r.cuePotted,
                     "pot solid terpilih masuk bersih tanpa scratch");
         }
         System.out.println("  readout: " + Auto.lastReport);
+    }
+
+    // (j) reproduksi screenshot 21:26 — bola putih terjepit di kanan,
+    // kontak langsung ke solids terhalang stripes/8. Perencana expert
+    // TIDAK BOLEH menyerah: wajib keputusan tangga (kick/safety/dst)
+    // yang bersih pada simulasi ulang.
+    static void testSnookered() {
+        System.out.println("[j] posisi terjepit (screenshot 21:26)");
+        Snap s = baseSnap(16, 8);
+        put(s, 0, 1200f, 0f);        // cue menempel sisi kanan
+        put(s, 6, 1200f, 420f);      // solid kita, segaris di bawah cue
+        put(s, 14, 1200f, 200f);     // stripe menghalangi garis ke 6
+        put(s, 1, -1000f, 0f);       // solid bebas jauh di kiri
+        put(s, 8, 300f, 10f);        // bola 8 menghalangi garis ke 1
+        put(s, 9, -300f, -15f);      // stripe menghalangi pantulan garis
+        put(s, 3, -1200f, -500f);    // solid dekat lubang kiri-bawah
+        put(s, 13, -1050f, -380f);   // stripe menghalangi garis ke 3
+        for (int i = 1; i <= 7; i++) {
+            s.legal[i] = true;
+        }
+        Auto.Shot shot = Auto.searchShot(s, Auto.DIFF_EXPERT);
+        check(shot != null,
+                "perencana TIDAK menyerah pada posisi terjepit (tangga expert)");
+        Sim.Result r = resim(s, shot);
+        int[] out = new int[2];
+        check(Auto.passesFilter(s, r, out),
+                "keputusan tangga bersih: kontak legal, tanpa bola salah/scratch");
+        System.out.println("  tingkat=" + shot.level + " readout: " + Auto.lastReport);
+    }
+
+    // (k) unit saringan penuh Perintah 5A: pot legal yang DALAM
+    // SIMULASI PENUH ikut menjatuhkan bola lawan (tabrakan sekunder)
+    // wajib ditolak; pot legal bersih wajib lolos.
+    static void testFullSimTrap() {
+        System.out.println("[k] saringan penuh: bola salah ikut masuk = tolak");
+        Snap s = baseSnap(16, 8);
+        s.legal[1] = true;
+        Sim.Result bad = new Sim.Result(16, false);
+        bad.firstContact = 1;
+        bad.potted[1] = true;   // target legal masuk
+        bad.potted[9] = true;   // TAPI bola lawan ikut masuk (sekunder)
+        check(!Auto.passesFilter(s, bad, null),
+                "pot legal + bola lawan ikut masuk -> DITOLAK (5A)");
+        Sim.Result bad8 = new Sim.Result(16, false);
+        bad8.firstContact = 1;
+        bad8.potted[1] = true;
+        bad8.potted[8] = true;  // bola 8 dini ikut masuk
+        check(!Auto.passesFilter(s, bad8, null),
+                "pot legal + bola 8 dini -> DITOLAK (5A)");
+        Sim.Result good = new Sim.Result(16, false);
+        good.firstContact = 1;
+        good.potted[1] = true;
+        int[] out = new int[2];
+        check(Auto.passesFilter(s, good, out) && out[0] == 1,
+                "pot legal bersih -> lolos");
+    }
+
+    // (l) tingkat kesulitan pada posisi yang sama: NORMAL = pot
+    // langsung sederhana; MUSTAHIL = rencana run-out >= 3 bola.
+    static void testDifficultyLevels() {
+        System.out.println("[l] kesulitan: Normal vs Mustahil");
+        Snap s = baseSnap(16, 8);
+        put(s, 0, 0f, 400f);
+        put(s, 1, 0f, -100f);
+        put(s, 2, -450f, -350f);
+        put(s, 3, 450f, -350f);
+        s.legal[1] = true;
+        s.legal[2] = true;
+        s.legal[3] = true;
+        Auto.Shot n = Auto.searchShot(s, Auto.DIFF_NORMAL);
+        check(n != null && n.level == Auto.LV_POT && n.chainLen == 0,
+                "NORMAL: pot langsung sederhana tanpa rantai (dapat tingkat "
+                        + (n == null ? "null" : n.level) + ")");
+        Auto.Shot m = Auto.searchShot(s, Auto.DIFF_MUSTAHIL);
+        check(m != null, "MUSTAHIL: ada keputusan");
+        check(m != null && m.chainLen >= 3,
+                "MUSTAHIL: rencana run-out >= 3 bola (dapat chain "
+                        + (m == null ? "-" : m.chainLen) + ")");
+        System.out.println("  readout mustahil: " + Auto.lastReport);
+    }
+
+    static Snap arcadeSnap() {
+        Snap s = baseSnap(16, -1);
+        s.arcade = true;
+        s.restTime = 6;
+        s.ruleClass = "LevelRule";
+        for (int i = 1; i < s.legal.length; i++) {
+            s.legal[i] = true; // LevelRule: semua bola non-cue sah
+        }
+        return s;
+    }
+
+    // (m) Arcade: lubang atas-tengah = lubang hitam (effect 1).
+    // Bola 1 lurus ke sana menggoda; perencana wajib memot bola lain /
+    // jalur lain — tidak ada bola boleh masuk lubang hitam.
+    static void testArcadeBlackHole() {
+        System.out.println("[m] arcade: hindari lubang hitam");
+        Snap s = arcadeSnap();
+        s.holes[0].effect = 1; // TM (0,-628) lubang hitam
+        put(s, 0, 0f, 100f);
+        put(s, 1, 0f, -400f);      // lurus ke lubang hitam
+        put(s, 2, -700f, -300f);   // pot bersih ke TL (normal)
+        Auto.Shot shot = Auto.searchShot(s, Auto.DIFF_EXPERT);
+        check(shot != null, "arcade: ada tembakan");
+        Sim.Result r = resim(s, shot);
+        int[] out = new int[2];
+        check(Auto.passesFilter(s, r, out) && out[0] >= 1,
+                "arcade: tembakan terpilih memasukkan bola & lolos saringan");
+        for (int i = 1; i < s.balls.length; i++) {
+            if (r.potted[i]) {
+                check(s.holes[r.potHole[i]].effect != 1,
+                        "tidak ada bola masuk lubang hitam");
+            }
+        }
+        System.out.println("  readout: " + Auto.lastReport);
+    }
+
+    // (n) Arcade: multi-pot (bola 1 masuk + bola putih menyusul
+    // mengetuk bola 2 yang menggantung) harus mengalahkan pot tunggal.
+    static void testArcadeMultiPot() {
+        System.out.println("[n] arcade: multi-pot di atas pot tunggal");
+        Snap s = arcadeSnap();
+        put(s, 0, 0f, 300f);
+        put(s, 1, 0f, -300f);      // lurus ke lubang atas-tengah
+        put(s, 2, -15f, -560f);    // segaris di depan lubang: kena
+                                   // sundul bola 1 dalam perjalanan
+        put(s, 3, -900f, 400f);    // pot tunggal alternatif jauh
+        Auto.Shot shot = Auto.searchShot(s, Auto.DIFF_EXPERT);
+        check(shot != null, "arcade multi: ada tembakan");
+        Sim.Result r = resim(s, shot);
+        int pots = 0;
+        for (int i = 1; i < s.balls.length; i++) {
+            if (r.potted[i]) {
+                pots++;
+            }
+        }
+        check(pots >= 2, "multi-pot dipilih: " + pots + " bola masuk dalam 1 tembakan");
+        System.out.println("  readout: " + Auto.lastReport);
+    }
+
+    // (o) Arcade: jebakan scratch yang sama seperti (b) — kandidat
+    // scratch wajib ditolak selama ada garis berkontak.
+    static void testArcadeScratch() {
+        System.out.println("[o] arcade: scratch tetap ditolak");
+        Snap s = arcadeSnap();
+        put(s, 0, 0f, 100f);
+        put(s, 1, 0f, -400f);
+        Sim sim = s.newSim();
+        Sim.Result trap = sim.simulate(1500f, 0f, 0f, -90f, false);
+        check(trap.potted[1] && trap.cuePotted, "jebakan scratch arcade nyata");
+        check(!Auto.passesFilter(s, trap, null), "saringan arcade menolak scratch");
+        Auto.Shot shot = Auto.searchShot(s, Auto.DIFF_EXPERT);
+        check(shot != null, "arcade: tetap ada tembakan bersih");
+        Sim.Result r = resim(s, shot);
+        check(!r.cuePotted, "tembakan arcade terpilih tidak scratch");
     }
 
     public static void main(String[] args) {
@@ -337,6 +510,12 @@ public final class TestAuto {
         testScreenshotStripes();
         testPreferenceStraightBeatsFar();
         testScreenshotSolids();
+        testSnookered();
+        testFullSimTrap();
+        testDifficultyLevels();
+        testArcadeBlackHole();
+        testArcadeMultiPot();
+        testArcadeScratch();
         System.out.println("SEMUA UJI AUTO LULUS");
     }
 }

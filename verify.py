@@ -95,9 +95,9 @@ def main() -> int:
         assert "isAvailableTarget" in snap, "oracle target legal tidak ditemukan di Snap"
         assert "passesFilter" in auto, "saringan keras autoplay tidak ditemukan di Auto"
         mm = open(os.path.join(moddir, "ModMenu.smali"), encoding="utf-8").read()
-        assert "Auto Play Otomatis" in mm, "saklar Auto Play Otomatis tidak ditemukan di ModMenu"
+        assert "Auto Play" in mm, "saklar Auto Play tidak ditemukan di ModMenu"
         print("4d. v1.1: oracle isAvailableTarget (Snap), saringan keras (Auto), "
-              "saklar otomatis (ModMenu) tertanam")
+              "saklar Auto Play (ModMenu) tertanam")
 
         predict = open(os.path.join(moddir, "Predict.smali"), encoding="utf-8").read()
         assert "ensureAttached" in predict, "penegakan kehadiran container v1.2 tidak ditemukan di Predict"
@@ -107,6 +107,24 @@ def main() -> int:
         assert "autoReport" in mm, "baris readout v1.2 tidak ditemukan di ModMenu"
         print("4e. v1.2: ensureAttached (Predict), filterReason + lastReport (Auto), "
               "predictDiag (Hooks), autoReport (ModMenu) tertanam")
+
+        anim = open(os.path.join(moddir, "Anim.smali"), encoding="utf-8").read()
+        assert "shoot" in anim and "putFreeball" in anim, \
+            "mesin animasi eksekusi v1.3 tidak ditemukan di Anim"
+        assert "setAimAngle" in anim, "animasi rotasi stik v1.3 tidak ditemukan di Anim"
+        assert "planRunout" in auto, "perencana run-out Mustahil v1.3 tidak ditemukan di Auto"
+        assert "searchBank" in auto and "searchKick" in auto, \
+            "tangga expert (bank/kick) v1.3 tidak ditemukan di Auto"
+        assert "arcadeFilterReason" in auto, "saringan Arcade v1.3 tidak ditemukan di Auto"
+        assert "LevelRule" in snap, "deteksi Arcade (LevelRule) v1.3 tidak ditemukan di Snap"
+        assert "effect_type" in snap, "lubang spesial Arcade v1.3 tidak ditemukan di Snap"
+        assert "Kesulitan" in mm and "MUSTAHIL" in mm, \
+            "pemilih kesulitan v1.3 tidak ditemukan di ModMenu"
+        assert "autoFailCount" in open(os.path.join(moddir, "ModState.smali"),
+               encoding="utf-8").read(), "pengaman 3x gagal v1.3 tidak ditemukan di ModState"
+        print("4f. v1.3: Anim (shoot/putFreeball/setAimAngle), tangga expert + "
+              "run-out + saringan Arcade (Auto), LevelRule + effect_type (Snap), "
+              "pemilih kesulitan (ModMenu), pengaman 3x gagal (ModState) tertanam")
 
     print("VERIFY OK:", final_apk, os.path.getsize(final_apk), "byte")
     return 0
