@@ -5,6 +5,27 @@ Mod **gabung APK** (tanpa root) untuk **Pool Billiards Pro 5.3**
 APK asli ada di `original/`; hasil bedah lengkapnya dirangkum dari
 laporan REA internal (mesin Basket, fisika Java murni di `PoolTable`).
 
+## v1.2 — perbaikan dua kegagalan uji HP v1.1 (detail: `BUILD-MOD-v1.2.md`)
+
+1. **Prediksi hilang sesudah game selesai — akar terbukti:** pergantian
+   game/ronde menjalankan `GameScene.setRule/showGameEnd →
+   PoolTable.reset() → ContainerBase.clear()` yang menghapus container
+   garis mod dari instance meja yang sama; pemeriksaan v1.1 hanya
+   berjalan saat instance meja berganti, jadi garis mati permanen.
+   v1.2 memverifikasi dan memasang ulang container pada setiap tick
+   bidik dan setiap panggilan gambar.
+2. **Autoplay "tolol" — akar terbukti:** skor v1.1 didominasi
+   `robust×250`, sehingga pot jauh yang "kokoh" mengalahkan pot dekat
+   yang enak dan kekuatan terpilih selalu besar. v1.2: robust ≥3
+   menjadi *syarat* bila ada yang mencapainya, skor kemudahan
+   (potong/jarak/kekuatan) yang memutuskan antar tembakan kokoh,
+   kekuatan terpilih dilunakkan bertahap selama tetap kokoh.
+3. **Readout keputusan di menu:** grup legal terdeteksi, jumlah
+   kandidat, penolakan per alasan (scratch/kontak/bola lawan/bola 8
+   dini), pilihan bola + lubang + kekuatan — atau alasan tidak
+   menembak; plus baris diagnosis prediksi (segmen tergambar / alasan
+   tidak menggambar), supaya screenshot berikutnya menjelaskan dirinya.
+
 ## Fitur
 
 1. **Long line** — garis bidik diperpanjang ke titik kontak pertama

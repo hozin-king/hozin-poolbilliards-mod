@@ -99,6 +99,15 @@ def main() -> int:
         print("4d. v1.1: oracle isAvailableTarget (Snap), saringan keras (Auto), "
               "saklar otomatis (ModMenu) tertanam")
 
+        predict = open(os.path.join(moddir, "Predict.smali"), encoding="utf-8").read()
+        assert "ensureAttached" in predict, "penegakan kehadiran container v1.2 tidak ditemukan di Predict"
+        assert "filterReason" in auto, "alasan penolakan berkode v1.2 tidak ditemukan di Auto"
+        assert "lastReport" in auto, "readout keputusan v1.2 tidak ditemukan di Auto"
+        assert "predictDiag" in hooks, "readout diagnosis prediksi v1.2 tidak ditemukan di Hooks"
+        assert "autoReport" in mm, "baris readout v1.2 tidak ditemukan di ModMenu"
+        print("4e. v1.2: ensureAttached (Predict), filterReason + lastReport (Auto), "
+              "predictDiag (Hooks), autoReport (ModMenu) tertanam")
+
     print("VERIFY OK:", final_apk, os.path.getsize(final_apk), "byte")
     return 0
 

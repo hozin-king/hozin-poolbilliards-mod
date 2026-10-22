@@ -68,6 +68,21 @@ public final class Auto {
     public static volatile Snap pendingSnap;
     /** Hasil pencarian terakhir: "pot" | "aman" | "tidak ada tembakan aman" | "" */
     public static volatile String lastOutcome = "";
+    /** Readout keputusan terakhir untuk menu (grup legal, jumlah
+     * kandidat, penolakan per alasan, tembakan terpilih / alasan diam). */
+    public static volatile String lastReport = "";
+
+    // kode alasan filterReason()
+    static final int PASS = 0;
+    static final int REJ_SCRATCH = 1;   // bola putih masuk
+    static final int REJ_CONTACT = 2;   // tanpa kontak / kontak pertama ilegal
+    static final int REJ_ILLEGAL = 3;   // hanya bola non-target yang masuk
+    static final int REJ_MONEY = 4;     // bola penentu masuk sebelum legal
+
+    // penghitung selama satu pencarian (diisi evalPot saat `counting`)
+    static int candCount;
+    static final int[] rejectCounts = new int[5];
+    static boolean counting;
 
     private Auto() {
     }
@@ -131,15 +146,16 @@ public final class Auto {
 
     // ----------------------------------------------------------------
     // SARINGAN KERAS — dinilai dari hasil klon satu tembakan.
-    // Mengisi out[0]=jumlah pot legal, out[1]=pot money legal (0/1).
+    // filterReason mengembalikan PASS atau kode alasan penolakan;
+    // mengisi out[0]=jumlah pot legal, out[1]=pot money legal (0/1).
     // ----------------------------------------------------------------
-    static boolean passesFilter(Snap snap, Sim.Result r, int[] out) {
+    static int filterReason(Snap snap, Sim.Result r, int[] out) {
         int cue = snap.clickTarget;
         if (r.cuePotted) {
-            return false; // scratch — aib v1, sekarang mustahil lolos
+            return REJ_SCRATCH; // scratch — aib v1, sekarang mustahil lolos
         }
         if (r.firstContact < 0 || !isLegal(snap, r.firstContact)) {
-            return false; // tak menyentuh bola / kontak pertama foul
+            return REJ_CONTACT; // tak menyentuh bola / kontak pertama foul
         }
         int legalPots = 0;
         boolean illegalPot = false;
@@ -155,7 +171,7 @@ public final class Auto {
                     moneyWin = true;
                 } else {
                     // 8-ball: bola 8 masuk sebelum legal = kalah.
-                    return false;
+                    return REJ_MONEY;
                 }
             } else if (isLegal(snap, i)) {
                 legalPots++;
@@ -164,13 +180,17 @@ public final class Auto {
             }
         }
         if (illegalPot && legalPots == 0 && !moneyWin) {
-            return false; // memasukkan bola lawan tanpa target sendiri
+            return REJ_ILLEGAL; // memasukkan bola lawan tanpa target sendiri
         }
         if (out != null) {
             out[0] = legalPots;
             out[1] = moneyWin ? 1 : 0;
         }
-        return true;
+        return PASS;
+    }
+
+    static boolean passesFilter(Snap snap, Sim.Result r, int[] out) {
+        return filterReason(snap, r, out) == PASS;
     }
 
     /** Skor dasar kandidat yang LOLOS saringan (pot). */
@@ -202,9 +222,14 @@ public final class Auto {
                 sc -= (130.0f - d) * 1.2f;
             }
         }
-        sc -= cutDeg * 6.0f;              // potong lurus lebih enak
-        sc -= travel * 0.05f;             // dekat lebih enak
-        sc -= strength * 0.002f;
+        // v1.2: bobot "enak" diperkuat — sudut potong kecil, jarak
+        // pendek, dan kekuatan kecil jauh lebih menentukan daripada
+        // v1.1 (di sana skor didominasi uji perturbasi sehingga
+        // tembakan jauh yang "kokoh" bisa mengalahkan pot dekat yang
+        // jelas-jelas paling enak di mata pemain).
+        sc -= cutDeg * 10.0f;             // potong lurus lebih enak
+        sc -= travel * 0.08f;             // dekat lebih enak
+        sc -= strength * 0.01f;           // lembut lebih enak
         return sc;
     }
 
@@ -212,6 +237,7 @@ public final class Auto {
     private static final class Cand {
         float angle, strength;
         int target;
+        int hole = -1;
         int legalPots;
         boolean moneyWin;
         float cutDeg, travel, score;
@@ -224,7 +250,14 @@ public final class Auto {
                                 float cutDeg, float travel) {
         Sim.Result r = sim.simulate(strength, 0.0f, 0.0f, angle, false);
         int[] out = new int[2];
-        if (!passesFilter(snap, r, out)) {
+        int reason = filterReason(snap, r, out);
+        if (counting) {
+            candCount++;
+            if (reason != PASS) {
+                rejectCounts[reason]++;
+            }
+        }
+        if (reason != PASS) {
             return null;
         }
         if (out[0] == 0 && out[1] == 0) {
@@ -237,6 +270,10 @@ public final class Auto {
         c.angle = angle;
         c.strength = strength;
         c.target = target;
+        c.hole = r.potHole[target];
+        if (c.hole < 0 && out[1] != 0 && snap.moneyBall > 0) {
+            c.hole = r.potHole[snap.moneyBall];
+        }
         c.legalPots = out[0];
         c.moneyWin = out[1] != 0;
         c.cutDeg = cutDeg;
@@ -291,7 +328,10 @@ public final class Auto {
 
     // ----------------------------------------------------------------
     public static Shot searchShot(Snap snap) {
+        resetCounters();
         if (!snap.legalKnown) {
+            counting = false;
+            setReport("Auto: oracle target tidak terbaca — tidak menembak");
             return null; // oracle target tidak terbaca — jangan menembak
         }
         Sim sim = snap.newSim();
@@ -340,14 +380,34 @@ public final class Auto {
             }
         }
 
+        counting = false;
         Cand best = pickMostRobust(sim, snap, cands);
         if (best != null) {
+            trimStrength(sim, snap, best);
+            setReport(reportHead(snap) + "dipilih bola " + best.target + " → "
+                    + holeName(snap, best.hole) + ", kekuatan " + (int) best.strength
+                    + ", kokoh " + best.robust + "/6");
             return toShot(best, best.robust);
         }
-        return searchSafety(sim, snap);
+        Shot safety = searchSafety(sim, snap);
+        if (safety != null) {
+            setReport(reportHead(snap) + "pengaman ke bola " + safety.targetBall
+                    + ", kekuatan " + (int) safety.strength);
+        } else {
+            setReport(reportHead(snap) + "tidak menembak (tak ada pot/pengaman aman)");
+        }
+        return safety;
     }
 
-    /** Dari kandidat pot yang lolos: pilih robust tertinggi, lalu skor. */
+    /**
+     * Pemilihan v1.2 — "paling enak" seperti mata pemain, bukan sekadar
+     * paling kokoh: ketahanan perturbasi menjadi SYARAT (bila ada
+     * kandidat dengan robust >= 3, yang di bawah itu disisihkan),
+     * lalu skor kemudahan (potong kecil, jarak pendek, kekuatan kecil)
+     * yang memutuskan; robust hanya penimbang tambahan kecil.
+     * Di v1.1 robust mendominasi (x250) sehingga tembakan jauh yang
+     * lebar jendela pertubasinya mengalahkan pot dekat yang jelas.
+     */
     private static Cand pickMostRobust(Sim sim, Snap snap, ArrayList<Cand> cands) {
         if (cands.isEmpty()) {
             return null;
@@ -363,17 +423,154 @@ public final class Auto {
             }
         }
         int lim = Math.min(8, cands.size());
-        Cand best = null;
+        int bestRobustSeen = -1;
         for (int i = 0; i < lim; i++) {
             Cand c = cands.get(i);
             c.robust = robustness(sim, snap, c);
-            if (best == null
-                    || c.robust > best.robust
-                    || (c.robust == best.robust && c.score > best.score)) {
+            if (c.robust > bestRobustSeen) {
+                bestRobustSeen = c.robust;
+            }
+        }
+        Cand best = null;
+        float bestFinal = -Float.MAX_VALUE;
+        for (int i = 0; i < lim; i++) {
+            Cand c = cands.get(i);
+            if (bestRobustSeen >= 3 && c.robust < 3) {
+                continue; // terlalu rapuh — pisau di tepi lubang
+            }
+            float fin = c.score + c.robust * 60.0f;
+            if (fin > bestFinal) {
+                bestFinal = fin;
                 best = c;
             }
         }
+        if (best == null) { // semua kandidat rapuh: robust tertinggi dulu
+            for (int i = 0; i < lim; i++) {
+                Cand c = cands.get(i);
+                if (best == null || c.robust > best.robust
+                        || (c.robust == best.robust && c.score > best.score)) {
+                    best = c;
+                }
+            }
+        }
         return best;
+    }
+
+    /**
+     * Pelunakan kekuatan pasca-pilih: turunkan strength bertahap
+     * (x0,88, maks 3 langkah) selama tembakan tetap memasukkan target,
+     * lolos saringan, DAN tetap masuk pada geser sudut ±0,15°.
+     * Tembakan selembut yang masih kokoh = bola tidak berhamburan —
+     * salah satu sumber kesan "tolol" v1.1 (strength selalu besar).
+     */
+    private static void trimStrength(Sim sim, Snap snap, Cand c) {
+        float st = c.strength;
+        for (int i = 0; i < 3; i++) {
+            float lower = clamp(st * 0.88f, snap.minStrength, snap.maxStrength);
+            if (lower >= st - 1.0f) {
+                break;
+            }
+            if (!potsAt(sim, snap, c, lower, c.angle)
+                    || !potsAt(sim, snap, c, lower, c.angle + 0.15f)
+                    || !potsAt(sim, snap, c, lower, c.angle - 0.15f)) {
+                break;
+            }
+            st = lower;
+        }
+        c.strength = st;
+    }
+
+    private static boolean potsAt(Sim sim, Snap snap, Cand c, float strength, float angle) {
+        Sim.Result r = sim.simulate(strength, 0.0f, 0.0f, angle, false);
+        int[] out = new int[2];
+        return passesFilter(snap, r, out) && (r.potted[c.target] || out[1] != 0);
+    }
+
+    // ----------------------------------------------------------------
+    // READOUT KEPUTUSAN (menu) — grup legal, kandidat, penolakan, pilihan
+    // ----------------------------------------------------------------
+    static String groupLabel(Snap snap) {
+        if (!snap.legalKnown) {
+            return "grup tidak terbaca";
+        }
+        if (snap.moneyBall == 9) {
+            for (int i = 1; i < snap.balls.length; i++) {
+                if (isLegal(snap, i)) {
+                    return "bola terendah " + i;
+                }
+            }
+            return "tidak ada bola legal";
+        }
+        if (snap.moneyBall == 8) {
+            boolean solids = false, stripes = false, eight = false;
+            for (int i = 1; i <= 7 && i < snap.balls.length; i++) {
+                solids |= isLegal(snap, i);
+            }
+            for (int i = 9; i <= 15 && i < snap.balls.length; i++) {
+                stripes |= isLegal(snap, i);
+            }
+            eight = snap.balls.length > 8 && isLegal(snap, 8);
+            if (eight && !solids && !stripes) {
+                return "tinggal bola 8";
+            }
+            if (solids && stripes) {
+                return "meja terbuka";
+            }
+            if (solids) {
+                return "solids (1-7)";
+            }
+            if (stripes) {
+                return "stripes (9-15)";
+            }
+            return "tidak ada bola legal";
+        }
+        return "semua bola";
+    }
+
+    static String holeName(Snap snap, int h) {
+        if (h < 0 || h >= snap.holes.length) {
+            return "lubang ?";
+        }
+        Sim.Hole hole = snap.holes[h];
+        String sx = Math.abs(hole.x) < snap.tableW * 0.18f ? "tengah"
+                : (hole.x < 0 ? "kiri" : "kanan");
+        String sy = hole.y < 0 ? "atas" : "bawah";
+        return "lubang " + sx + "-" + sy;
+    }
+
+    private static String rejectSummary() {
+        StringBuilder sb = new StringBuilder();
+        if (rejectCounts[REJ_SCRATCH] > 0) {
+            sb.append(" scratch ").append(rejectCounts[REJ_SCRATCH]);
+        }
+        if (rejectCounts[REJ_CONTACT] > 0) {
+            sb.append(" kontak ").append(rejectCounts[REJ_CONTACT]);
+        }
+        if (rejectCounts[REJ_ILLEGAL] > 0) {
+            sb.append(" bolalawan ").append(rejectCounts[REJ_ILLEGAL]);
+        }
+        if (rejectCounts[REJ_MONEY] > 0) {
+            sb.append(" bola8dini ").append(rejectCounts[REJ_MONEY]);
+        }
+        return sb.length() == 0 ? " -" : sb.toString();
+    }
+
+    private static void resetCounters() {
+        candCount = 0;
+        for (int i = 0; i < rejectCounts.length; i++) {
+            rejectCounts[i] = 0;
+        }
+        counting = true;
+    }
+
+    private static String reportHead(Snap snap) {
+        return "Auto: " + groupLabel(snap) + " • kandidat " + candCount
+                + " • ditolak:" + rejectSummary() + " • ";
+    }
+
+    private static void setReport(String s) {
+        lastReport = s;
+        ModState.autoReport = s;
     }
 
     // ----------------------------------------------------------------
@@ -439,7 +636,10 @@ public final class Auto {
 
     // ----------------------------------------------------------------
     public static Shot searchFreeball(Snap snap) {
+        resetCounters();
         if (!snap.legalKnown) {
+            counting = false;
+            setReport("Auto: oracle target tidak terbaca — tidak menembak");
             return null;
         }
         Sim sim = snap.newSim();
@@ -487,6 +687,7 @@ public final class Auto {
             }
         }
         sim.setProtoPosition(snap.clickTarget, origX, origY);
+        counting = false;
 
         // Pemenang dipilih dari skor dasar; ketahanannya diuji dengan
         // proto cue diparkir di spot pemenang (perturbasi hanya valid
@@ -499,11 +700,17 @@ public final class Auto {
             }
         }
         if (best == null) {
+            setReport(reportHead(snap) + "freeball: tidak ada penempatan pot aman");
             return null; // tidak ada penempatan pot yang aman & legal
         }
         sim.setProtoPosition(snap.clickTarget, best.spotX, best.spotY);
         int rob = robustness(sim, snap, best);
+        best.robust = rob;
+        trimStrength(sim, snap, best);
         sim.setProtoPosition(snap.clickTarget, origX, origY);
+        setReport(reportHead(snap) + "freeball bola " + best.target + " → "
+                + holeName(snap, best.hole) + ", kekuatan " + (int) best.strength
+                + ", kokoh " + rob + "/6");
         return toShot(best, rob);
     }
 }

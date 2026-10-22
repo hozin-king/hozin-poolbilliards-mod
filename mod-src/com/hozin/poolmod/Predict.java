@@ -44,7 +44,57 @@ public final class Predict {
     private static int used = 0;          // sprite yang sedang terlihat
     private static Object attachedTable;  // table tempat container menempel
 
+    // diagnostik runtime (dibaca Hooks -> ModState.predictDiag -> menu)
+    public static volatile boolean poolReady;
+    public static volatile boolean containerAttached;
+    public static volatile boolean reattachedOnce;
+    public static volatile int lastSegCount;
+
     private Predict() {
+    }
+
+    /**
+     * Penegakan kehadiran per tick (dipanggil Hooks sebelum cek kunci
+     * gambar): bila game menghapus container dari table (reset/setRule),
+     * pasang ulang SEKARANG — jangan menunggu bidik berubah, karena
+     * kunci cache gambar bisa menekan gambar ulang tanpa batas.
+     * Murah: iterasi <= kapasitas anak table.
+     */
+    public static void ensureAttached(Object table) {
+        if (lines == null || container == null) {
+            return;
+        }
+        try {
+            if (!isPresent(table)) {
+                Ref.invoke(table, "addChild",
+                        new Class<?>[]{Ref.cls("com.fruitsmobile.basket.DrawableObject")}, container);
+                if (attachedTable == table) {
+                    reattachedOnce = true;
+                }
+                attachedTable = table;
+                containerAttached = isPresent(table);
+                poolReady = containerAttached;
+            } else {
+                containerAttached = true;
+                poolReady = true;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Apakah container saat ini benar-benar anak dari table ini? */
+    private static boolean isPresent(Object table) {
+        try {
+            int count = Ref.invokeI(table, "getCount", new Class<?>[0]);
+            for (int i = 0; i < count; i++) {
+                Object child = Ref.invoke(table, "getChild", new Class<?>[]{int.class}, i);
+                if (child == container) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private static boolean ensurePool(Object table) {
@@ -53,10 +103,12 @@ public final class Predict {
                 Class<?> lineCls = Ref.cls("com.fruitsmobile.basket.sprites.LineSprite");
                 Class<?> contCls = Ref.cls("com.fruitsmobile.basket.SimpleContainer");
                 if (lineCls == null || contCls == null) {
+                    poolReady = false;
                     return false;
                 }
                 container = Ref.newInstanceInt(contCls, POOL + 8);
                 if (container == null) {
+                    poolReady = false;
                     return false;
                 }
                 lines = new Object[POOL];
@@ -65,33 +117,40 @@ public final class Predict {
                     if (lines[i] == null) {
                         lines = null;
                         container = null;
+                        poolReady = false;
                         return false;
                     }
                     Ref.invoke(lines[i], "setVisible", SIG_Z, false);
                     Ref.invoke(container, "addChild",
                             new Class<?>[]{Ref.cls("com.fruitsmobile.basket.DrawableObject")}, lines[i]);
                 }
+                attachedTable = null; // paksa pemeriksaan kehadiran di bawah
             }
-            if (attachedTable != table) {
-                // cek apakah container sudah menjadi anak table ini
-                boolean present = false;
-                int count = Ref.invokeI(table, "getCount", new Class<?>[0]);
-                for (int i = 0; i < count; i++) {
-                    Object child = Ref.invoke(table, "getChild", new Class<?>[]{int.class}, i);
-                    if (child == container) {
-                        present = true;
-                        break;
-                    }
-                }
-                if (!present) {
-                    Ref.invoke(table, "addChild",
-                            new Class<?>[]{Ref.cls("com.fruitsmobile.basket.DrawableObject")}, container);
+            // PERBAIKAN v1.2 — akar garis hilang di HP: game MEMBANGUN
+            // ULANG anak-anak PoolTable pada tiap pergantian game/ronde
+            // (GameScene.setRule/showGameEnd -> PoolTable.reset() ->
+            // ContainerBase.clear(), arrUsed=0). Container mod ikut
+            // terhapus dari instance table yang SAMA, dan pemeriksaan
+            // lama hanya berjalan saat instance table berganti — jadi
+            // garis mati permanen tanpa gejala lain. Sekarang kehadiran
+            // container diverifikasi pada SETIAP panggilan gambar dan
+            // dipasang ulang bila hilang.
+            if (!isPresent(table)) {
+                Ref.invoke(table, "addChild",
+                        new Class<?>[]{Ref.cls("com.fruitsmobile.basket.DrawableObject")}, container);
+                if (attachedTable == table) {
+                    reattachedOnce = true; // terhapus oleh reset game
                 }
                 attachedTable = table;
-                used = 0;
+                containerAttached = isPresent(table);
+            } else {
+                attachedTable = table;
+                containerAttached = true;
             }
-            return true;
+            poolReady = containerAttached;
+            return poolReady;
         } catch (Throwable t) {
+            poolReady = false;
             return false;
         }
     }
@@ -141,6 +200,7 @@ public final class Predict {
         float ey = cue.y + Sim.sinDeg(angleDeg) * dist;
         setSeg(0, cue.x, cue.y, ex, ey, 1.0f, 1.0f, 1.0f, 0.9f);
         finishFrom(1);
+        lastSegCount = 1;
     }
 
     /** Gambar prediksi penuh dari hasil klon Sim. */
@@ -185,5 +245,6 @@ public final class Predict {
             }
         }
         finishFrom(idx);
+        lastSegCount = idx;
     }
 }

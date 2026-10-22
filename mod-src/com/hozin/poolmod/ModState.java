@@ -36,6 +36,11 @@ public final class ModState {
     public static volatile boolean humanTurn = false;
     public static volatile String modeLabel = "-";
     public static volatile String statusText = "";
+    // readout diagnosis (menu baris kedua): kenapa prediksi tidak
+    // menggambar / apa keputusan autoplay terakhir — jembatan bukti
+    // runtime dari HP user (diisi Hooks & Auto, dibaca ModMenu)
+    public static volatile String predictDiag = "";
+    public static volatile String autoReport = "";
 
     // permintaan dari UI -> dieksekusi thread game
     public static volatile boolean autoRequested = false;

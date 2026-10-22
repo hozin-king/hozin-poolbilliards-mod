@@ -62,13 +62,13 @@ jobs:
       - name: Verifikasi APK final
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
-        run: python3 verify.py PoolBilliardsPro-Mod-v1.1.apk "original/Pool_Billiards_Pro_5.3.apk"
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.2.apk "original/Pool_Billiards_Pro_5.3.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: poolbilliards-mod-apk
-          path: PoolBilliardsPro-Mod-v1.1.apk
+          path: PoolBilliardsPro-Mod-v1.2.apk
 
       - name: Buat GitHub Release (hanya tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -81,38 +81,44 @@ jobs:
             terpisah), dibangun GitHub Actions dari sumber di repo ini,
             lolos uji konsistensi klon fisika (JVM) dan verify.py.
 
-            Perbaikan v1.1 (dari kegagalan uji HP v1):
-            Auto play ditulis ulang total. v1 menembak bola putih ke
-            lubang dan memasukkan bola lawan karena target dinilai dari
-            skor semata. Sekarang:
-            1. Target legal dibaca dari game sendiri —
-               PoolRule.isAvailableTarget(): grup solids/stripes pemain
-               yang giliran, meja terbuka, bola 8 hanya bila grup habis,
-               bola terendah di 9-ball. Tanpa oracle terbaca, autoplay
-               tidak menembak.
-            2. Saringan KERAS (bukan skor): kandidat dibuang total bila
-               klonnya men-scratch bola putih, kontak pertama bukan
-               target legal, atau bola lawan masuk tanpa target sendiri.
-               Bola 8 masuk sebelum legal = ditolak mutlak.
-            3. Yang dipilih tembakan paling "enak": lolos uji
-               ketahanan perturbasi sudut ±0,3° & strength ±5%, sudut
-               potong kecil, jarak pendek.
-            4. Tidak ada pot aman -> tembakan pengaman lembut ke target
-               legal; tidak ada juga -> TIDAK menembak sama sekali.
-            5. Saklar baru "Auto Play Otomatis" (default OFF): pada
-               giliranmu, sesudah meja stabil ±1 detik, tembakan
-               dijalankan sendiri. Tombol AUTO PLAY manual tetap ada.
+            Perbaikan v1.2 (dari kegagalan uji HP v1.1):
+            1. GARIS PREDIKSI HILANG — akar terbukti dari kode game:
+               setiap pergantian game/ronde, game membangun ulang
+               anak-anak PoolTable (GameScene.setRule/showGameEnd ->
+               PoolTable.reset() -> ContainerBase.clear()). Container
+               garis mod ikut terhapus dari instance meja yang sama,
+               dan pemeriksaan lama hanya berjalan saat instance meja
+               berganti — garis mati permanen tanpa gejala lain.
+               Sekarang kehadiran container diverifikasi & dipasang
+               ulang pada SETIAP tick bidik dan setiap panggilan gambar.
+            2. AUTO PLAY terasa "tolol" — logika v1.1 terbukti benar
+               pada harness JVM berkode game asli (target legal, pot
+               bersih, tanpa scratch), tetapi pemilihannya didominasi
+               uji perturbasi sehingga tembakan jauh bisa mengalahkan
+               pot dekat yang paling enak, dan kekuatan selalu besar.
+               v1.2: ketahanan menjadi syarat (robust >= 3 bila ada),
+               skor kemudahan (potong kecil, jarak pendek, kekuatan
+               kecil) yang memutuskan, plus pelunakan kekuatan
+               pasca-pilih (turun bertahap selama tetap kokoh).
+            3. READOUT KEPUTUSAN di menu: grup legal terdeteksi,
+               jumlah kandidat, penolakan per alasan (scratch/kontak/
+               bola lawan/bola 8 dini), bola + lubang + kekuatan yang
+               dipilih atau alasan tidak menembak; baris diagnosis
+               prediksi (berapa segmen tergambar / kenapa tidak).
 
-            Fitur lain tetap: long line (calcAimTarget asli), prediksi
-            penuh warna-warni (klon fisika), menu melayang MOD.
+            Fitur lain tetap: target legal dari PoolRule
+            .isAvailableTarget, saringan keras anti-scratch/anti-bola
+            -lawan, saklar "Auto Play Otomatis", long line
+            (calcAimTarget asli), menu melayang MOD.
 
             BATAS KERAS: semua fitur mati total di mode PvP online
             (rule.isPVPMode()) — latch + pemeriksaan di setiap titik
             masuk fitur, menu disembunyikan. Hanya untuk mode offline:
-            VS Computer, Time, Arcade/Level, Tutorial. IAP/koin/stik dan
-            jaringan tidak disentuh.
+            VS Computer, Time, Arcade/Level, Tutorial. IAP/koin/stik
+            dan jaringan tidak disentuh.
 
-            Catatan: logika baru lolos uji skenario JVM (termasuk
-            jebakan scratch & bola lawan) di CI; perilaku runtime
+            Catatan: logika lolos uji skenario JVM di CI (termasuk
+            layout screenshot uji HP 20:08 dan uji pulih-sesudah-reset
+            pada harness lokal berkode Basket asli); perilaku runtime
             persis di perangkat adalah tahap uji di HP.
-          files: PoolBilliardsPro-Mod-v1.1.apk
+          files: PoolBilliardsPro-Mod-v1.2.apk

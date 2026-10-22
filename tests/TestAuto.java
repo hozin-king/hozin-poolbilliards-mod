@@ -239,6 +239,93 @@ public final class TestAuto {
         check(Auto.searchShot(s) == null, "legalKnown=false -> autoplay diam");
     }
 
+    /** Layout meja dari screenshot uji HP user 22 Okt 20:08 (koordinat meja). */
+    static Snap screenshotSnap() {
+        Snap s = baseSnap(16, 8);
+        put(s, 0, -700f, -60f);     // cue, kiri-tengah
+        put(s, 1, -620f, 190f);     // solids tersebar
+        put(s, 2, 140f, 90f);
+        put(s, 3, 690f, 300f);      // gugus kanan-bawah: 3,5,6,13
+        put(s, 4, -470f, 430f);
+        put(s, 5, 770f, 330f);
+        put(s, 6, 830f, 210f);
+        put(s, 7, 1060f, 110f);     // marun kanan
+        put(s, 8, 490f, 40f);       // 8 hitam kanan-tengah
+        put(s, 9, -160f, -540f);    // stripes
+        put(s, 10, 120f, -430f);    // stripe biru dekat lubang atas-tengah
+        put(s, 11, 330f, -520f);
+        put(s, 12, 500f, -270f);
+        put(s, 13, 880f, 280f);
+        put(s, 14, 890f, 420f);
+        put(s, 15, 1090f, -40f);
+        return s;
+    }
+
+    // (h) layout screenshot, grup user = stripes
+    static void testScreenshotStripes() {
+        System.out.println("[h] layout screenshot — stripes legal");
+        Snap s = screenshotSnap();
+        for (int i = 9; i <= 15; i++) {
+            s.legal[i] = true;
+        }
+        Auto.Shot shot = Auto.searchShot(s);
+        check(shot != null, "ada tembakan pada layout screenshot");
+        check(!shot.safety, "yang dipilih pot, bukan pengaman (ada pot bersih)");
+        check(shot.targetBall >= 9 && shot.targetBall <= 15,
+                "target adalah stripe milik pemain (dapat " + shot.targetBall + ")");
+        Sim.Result r = resim(s, shot);
+        check(r.potted[shot.targetBall] && !r.cuePotted,
+                "pot terpilih masuk bersih tanpa scratch pada simulasi ulang");
+        check(Auto.lastReport.contains("stripes"),
+                "readout menyebut grup stripes: " + Auto.lastReport);
+        System.out.println("  readout: " + Auto.lastReport);
+    }
+
+    // (h2) preferensi "paling enak": pot lurus pendek harus mengalahkan
+    // pot jauh yang sama-sama lolos — inti keluhan v1.1 ("tidak memilih
+    // bola yang paling enak"). Bola 10 lurus ke lubang atas-tengah
+    // (potongan ~4°, travel pendek) vs bola 12 jauh (potongan ~16°,
+    // travel ~3x) pada layout screenshot yang sama.
+    static void testPreferenceStraightBeatsFar() {
+        System.out.println("[h2] preferensi pot lurus pendek vs pot jauh");
+        Snap s = screenshotSnap();
+        // reposisi: cue hampir segaris di belakang bola 10
+        s.balls[0].x = 30f;
+        s.balls[0].y = -60f;
+        s.balls[10].x = 0f;
+        s.balls[10].y = -350f;
+        for (int i = 9; i <= 15; i++) {
+            s.legal[i] = true;
+        }
+        Auto.Shot shot = Auto.searchShot(s);
+        check(shot != null && !shot.safety, "ada pot pada skenario preferensi");
+        check(shot.targetBall == 10,
+                "pot lurus pendek (bola 10) yang dipilih, bukan pot jauh (dapat "
+                        + shot.targetBall + ")");
+        Sim.Result r = resim(s, shot);
+        check(r.potted[10] && !r.cuePotted, "pot 10 masuk bersih tanpa scratch");
+        System.out.println("  readout: " + Auto.lastReport);
+    }
+
+    // (i) layout screenshot yang sama, grup legal = solids
+    static void testScreenshotSolids() {
+        System.out.println("[i] layout screenshot — solids legal");
+        Snap s = screenshotSnap();
+        for (int i = 1; i <= 7; i++) {
+            s.legal[i] = true;
+        }
+        Auto.Shot shot = Auto.searchShot(s);
+        check(shot == null || (shot.targetBall >= 1 && shot.targetBall <= 7),
+                "stripe tidak pernah ditargetkan saat solids yang legal (dapat "
+                        + (shot == null ? "diam" : shot.targetBall) + ")");
+        if (shot != null && !shot.safety) {
+            Sim.Result r = resim(s, shot);
+            check(r.potted[shot.targetBall] && !r.cuePotted,
+                    "pot solid terpilih masuk bersih tanpa scratch");
+        }
+        System.out.println("  readout: " + Auto.lastReport);
+    }
+
     public static void main(String[] args) {
         testOnlyOpponentPottable();
         testScratchTrap();
@@ -247,6 +334,9 @@ public final class TestAuto {
         testNineBall();
         testMoneyBallFilter();
         testNoOracleNoShot();
+        testScreenshotStripes();
+        testPreferenceStraightBeatsFar();
+        testScreenshotSolids();
         System.out.println("SEMUA UJI AUTO LULUS");
     }
 }

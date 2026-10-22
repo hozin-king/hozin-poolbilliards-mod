@@ -48,6 +48,7 @@ public final class ModMenu {
     private static boolean panelAdded;
     private static boolean panelOpen;
     private static TextView statusView;
+    private static TextView diagView;
     private static boolean watchdogOn;
 
     private ModMenu() {
@@ -155,6 +156,14 @@ public final class ModMenu {
         statusView.setTextSize(12.0f);
         statusView.setPadding(0, dp(act, 8), 0, dp(act, 4));
         panel.addView(statusView);
+
+        // baris diagnosis: alasan prediksi tidak menggambar + keputusan
+        // autoplay terakhir (grup legal, kandidat, penolakan, pilihan)
+        diagView = new TextView(act);
+        diagView.setTextColor(Color.rgb(165, 180, 190));
+        diagView.setTextSize(10.5f);
+        diagView.setPadding(0, 0, 0, dp(act, 4));
+        panel.addView(diagView);
 
         Switch swPredict = new Switch(act);
         swPredict.setText("Prediksi penuh");
@@ -371,6 +380,19 @@ public final class ModMenu {
             st = "-";
         }
         statusView.setText(m + " • " + st);
+        if (diagView != null) {
+            StringBuilder sb = new StringBuilder();
+            if (ModState.predictDiag != null && !ModState.predictDiag.isEmpty()) {
+                sb.append(ModState.predictDiag);
+            }
+            if (ModState.autoReport != null && !ModState.autoReport.isEmpty()) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append(ModState.autoReport);
+            }
+            diagView.setText(sb.toString());
+        }
     }
 
     private static void startWatchdog() {

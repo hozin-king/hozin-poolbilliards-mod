@@ -248,11 +248,20 @@ public final class Hooks {
         if (state != 1 || ptype != 0 || (!wantPredict && !wantLong)) {
             Predict.hideAll();
             lastPredictKey = Long.MIN_VALUE;
+            // readout: bedakan alasan gerbang (untuk diagnosis di HP)
+            if (!wantPredict && !wantLong) {
+                ModState.predictDiag = "prediksi: saklar mati";
+            } else if (state != 1) {
+                ModState.predictDiag = "prediksi: menunggu bidik (state=" + state + ")";
+            } else {
+                ModState.predictDiag = "prediksi: bukan giliranmu";
+            }
             return;
         }
         // GERBANG PvP segar sebelum menghitung apa pun
         if (Ref.invokeB(rule, "isPVPMode")) {
             Predict.hideAll();
+            ModState.predictDiag = "prediksi: mati di PvP";
             return;
         }
         float angle = Ref.invokeF(scene, "getAimAngle");
@@ -271,8 +280,12 @@ public final class Hooks {
         Snap snap = Snap.capture(table, rule, roundstate);
         if (snap == null) {
             Predict.hideAll();
+            ModState.predictDiag = "prediksi: snapshot meja gagal dibaca";
             return;
         }
+        // tegakkan kehadiran container SETIAP tick bidik (reset game
+        // menghapusnya dari table; lihat Predict.ensureAttached)
+        Predict.ensureAttached(table);
         long key = snap.positionKey();
         key = key * 31L + (int) (angle * 100.0f);
         key = key * 31L + (int) effStrength;
@@ -280,6 +293,10 @@ public final class Hooks {
         key = key * 31L + (int) (spinY * 100.0f);
         key = key * 31L + (wantPredict ? 1 : 0);
         if (key == lastPredictKey) {
+            if (Predict.reattachedOnce) {
+                ModState.predictDiag = "prediksi: " + Predict.lastSegCount
+                        + " segmen tergambar (container dipasang ulang)";
+            }
             return;
         }
         lastPredictKey = key;
@@ -301,6 +318,13 @@ public final class Hooks {
             Predict.drawPrediction(table, snap, r);
         } else {
             Predict.drawLongLine(table, rule, roundstate, snap, angle);
+        }
+        // readout hasil gambar terakhir
+        if (!Predict.poolReady) {
+            ModState.predictDiag = "prediksi: pool garis gagal dibuat/dipasang";
+        } else {
+            ModState.predictDiag = "prediksi: " + Predict.lastSegCount + " segmen tergambar"
+                    + (Predict.reattachedOnce ? " (container dipasang ulang)" : "");
         }
     }
 }
