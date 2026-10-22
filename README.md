@@ -16,17 +16,25 @@ laporan REA internal (mesin Basket, fisika Java murni di `PoolTable`).
    itu** (rantai tabrakan bercabang muncul alami), titik berhenti
    ditandai X, pantulan cushion memakai restitusi 0,8 + kopling spin
    versi game.
-3. **Auto play pintar** — pencarian tembakan di atas klon yang sama:
-   kandidat sudut ghost-ball per (bola, lubang) × tingkat strength,
-   diskor (bola masuk, bola putih tidak ikut masuk/foul, posisi akhir
-   bola putih untuk tembakan berikutnya), fase spin bila perlu, lalu
-   dieksekusi lewat jalur resmi `PoolTable.click(...)` — jalur yang
-   sama dengan pemain dan AI. Pada state freeball, titik penempatan
-   dicari dan divalidasi `rule.canPut()` asli sebelum `putFreeball()`.
+3. **Auto play pintar (v1.1, ditulis ulang)** — pencarian tembakan di
+   atas klon yang sama, dengan disiplin aturan game sendiri:
+   target legal dibaca dari `PoolRule.isAvailableTarget()` yang hidup
+   (grup solids/stripes pemain yang giliran, meja terbuka, bola 8
+   hanya bila grup habis, bola terendah di 9-ball); setiap kandidat
+   melewati **saringan keras** (dibuang total bila men-scratch bola
+   putih, kontak pertama bukan target legal, atau bola lawan masuk
+   tanpa target sendiri); yang dipilih adalah tembakan paling "enak"
+   (lolos uji ketahanan perturbasi sudut ±0,3° & strength ±5%, sudut
+   potong kecil, jarak pendek). Bila tidak ada pot aman: tembakan
+   pengaman lembut; bila tidak ada juga: tidak menembak. Eksekusi
+   lewat jalur resmi `PoolTable.click(...)` — jalur yang sama dengan
+   pemain dan AI. Pada state freeball, titik penempatan dicari dan
+   divalidasi `rule.canPut()` asli sebelum `putFreeball()`.
 4. **Menu melayang** — tombol MOD (jendela WindowManager
    `TYPE_APPLICATION_PANEL`, bisa digeser) dengan saklar Long Line /
-   Prediksi Penuh dan tombol AUTO PLAY. Default: keduanya ON,
-   autoplay manual lewat tombol.
+   Prediksi Penuh (default ON), tombol AUTO PLAY manual, dan saklar
+   **Auto Play Otomatis** (default OFF — pada giliranmu, sesudah meja
+   stabil ±1 detik, tembakan dijalankan sendiri).
 
 ## Batas keras: mode PvP
 
@@ -42,14 +50,18 @@ tidak disentuh sama sekali.
 
 ```
 bash build.sh        # butuh JDK 17, ANDROID_HOME, APKTOOL_JAR
-python3 verify.py PoolBilliardsPro-Mod-v1.apk original/Pool_Billiards_Pro_5.3.apk
+python3 verify.py PoolBilliardsPro-Mod-v1.1.apk original/Pool_Billiards_Pro_5.3.apk
 ```
 
-Uji konsistensi klon fisika (JVM, tanpa Android):
+Uji JVM (tanpa Android) — konsistensi klon fisika + logika autoplay:
 
 ```
-javac -d /tmp/t mod-src/com/hozin/poolmod/Sim.java tests/TestSim.java
+javac -d /tmp/t mod-src/com/hozin/poolmod/Sim.java \
+  mod-src/com/hozin/poolmod/Snap.java mod-src/com/hozin/poolmod/ModState.java \
+  mod-src/com/hozin/poolmod/Ref.java mod-src/com/hozin/poolmod/Auto.java \
+  tests/TestSim.java tests/TestAuto.java
 java -cp /tmp/t com.hozin.poolmod.TestSim
+java -cp /tmp/t com.hozin.poolmod.TestAuto
 ```
 
 GitHub Actions (`.github/workflows/build.yml`) menjalankan uji yang
@@ -63,6 +75,11 @@ menerbitkan GitHub Release berisi APK.
   tetapi klaim bit-exact di perangkat menunggu uji runtime di HP.
 - Prediksi memakai strength yang sedang diatur pemain; sebelum bar
   kekuatan ditarik, dipakai strength terakhir (awal 1500).
-- Penilaian autoplay bersifat umum (bola objek mana pun dihitung);
-  khusus 9-ball, kontak pertama & pot bola terendah diberi bobot
-  aturan. Grup 8-ball (solids/stripes) tidak dibaca dari state aturan.
+- Autoplay v1.1 membaca grup & target legal dari aturan game yang
+  hidup (`isAvailableTarget`), menilai kandidat dengan saringan
+  keras + uji ketahanan perturbasi. Saringan dinilai sebagai
+  himpunan bola masuk (klon tidak merekam urutan pot); bola 8
+  ditolak ketat. Selisih sub-presisi float klon vs native tetap
+  mungkin membalikkan tembakan yang persis di tepi lubang — uji
+  ketahanan dirancang menolak tembakan semacam itu, tetapi garansi
+  mutlak tidak diklaim. Rincian: `BUILD-MOD-v1.1.md`.

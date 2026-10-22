@@ -108,6 +108,7 @@ public final class ModMenu {
         SharedPreferences prefs = act.getSharedPreferences("poolmod", Context.MODE_PRIVATE);
         ModState.predictOn = prefs.getBoolean("predictOn", true);
         ModState.longLineOn = prefs.getBoolean("longLineOn", true);
+        ModState.autoOn = prefs.getBoolean("autoOn", false);
 
         // --- tombol MOD ---
         btnMod = new TextView(act);
@@ -181,6 +182,24 @@ public final class ModMenu {
         });
         panel.addView(swLong);
 
+        Switch swAuto = new Switch(act);
+        swAuto.setText("Auto Play Otomatis");
+        swAuto.setTextColor(Color.WHITE);
+        swAuto.setChecked(ModState.autoOn);
+        swAuto.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean checked) {
+                ModState.autoOn = checked;
+                // posisi meja saat ini tidak boleh langsung ditembak:
+                // lupakan probe & tahan sampai meja berubah/stabil lagi
+                ModState.autoProbeKey = Long.MIN_VALUE;
+                ModState.autoHoldKey = Long.MIN_VALUE;
+                ModState.autoPair = -1;
+                savePrefs(act);
+            }
+        });
+        panel.addView(swAuto);
+
         Button auto = new Button(act);
         auto.setText("AUTO PLAY");
         auto.setTextColor(Color.WHITE);
@@ -221,6 +240,7 @@ public final class ModMenu {
             act.getSharedPreferences("poolmod", Context.MODE_PRIVATE).edit()
                     .putBoolean("predictOn", ModState.predictOn)
                     .putBoolean("longLineOn", ModState.longLineOn)
+                    .putBoolean("autoOn", ModState.autoOn)
                     .apply();
         } catch (Throwable ignored) {
         }
@@ -334,7 +354,10 @@ public final class ModMenu {
             m = mode;
         }
         String st;
-        if (ModState.autoBusy) {
+        if (ModState.statusText != null && !ModState.statusText.isEmpty()
+                && System.currentTimeMillis() - ModState.statusMs < 6000L) {
+            st = ModState.statusText;
+        } else if (ModState.autoBusy) {
             st = "menghitung tembakan…";
         } else if (ModState.stateNow == 1) {
             st = ModState.humanTurn ? "giliranmu — silakan bidik" : "giliran lawan / AI";

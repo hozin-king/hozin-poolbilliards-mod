@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build PoolBilliardsPro-Mod-v1.apk (mod DIGABUNG ke APK game, tanpa root):
+# Build PoolBilliardsPro-Mod-v1.1.apk (mod DIGABUNG ke APK game, tanpa root):
 #   apktool decompile APK asli -> kompilasi kode mod (javac+d8) -> dex jadi
 #   smali lewat APK dummy -> sisipkan sebagai smali_classes5 -> patch smali
 #   (GameScene.tick + Main.onResume/onPause) -> apktool build -> zipalign ->
@@ -64,8 +64,8 @@ java -jar "$APKTOOL" b "$WORK/apk" -o "$WORK/mod-unsigned.apk"
 "$BT/zipalign" -p -f 4 "$WORK/mod-unsigned.apk" "$WORK/mod-aligned.apk"
 "$BT/apksigner" sign --ks "${POOL_KEYSTORE:-$HOME/workspace/hozin-pool-keys/mod.keystore}" --ks-pass "pass:${POOL_STORE_PASS:-}" \
   --key-pass "pass:${POOL_KEY_PASS:-}" --ks-key-alias "${POOL_KEY_ALIAS:-modkey}" \
-  --out "$ROOT/PoolBilliardsPro-Mod-v1.apk" "$WORK/mod-aligned.apk"
-"$BT/apksigner" verify "$ROOT/PoolBilliardsPro-Mod-v1.apk"
-"$BT/zipalign" -c 4 "$ROOT/PoolBilliardsPro-Mod-v1.apk"
-ls -la "$ROOT/PoolBilliardsPro-Mod-v1.apk"
-echo "BUILD OK: $ROOT/PoolBilliardsPro-Mod-v1.apk"
+  --out "$ROOT/PoolBilliardsPro-Mod-v1.1.apk" "$WORK/mod-aligned.apk"
+"$BT/apksigner" verify "$ROOT/PoolBilliardsPro-Mod-v1.1.apk"
+"$BT/zipalign" -c 4 "$ROOT/PoolBilliardsPro-Mod-v1.1.apk"
+ls -la "$ROOT/PoolBilliardsPro-Mod-v1.1.apk"
+echo "BUILD OK: $ROOT/PoolBilliardsPro-Mod-v1.1.apk"

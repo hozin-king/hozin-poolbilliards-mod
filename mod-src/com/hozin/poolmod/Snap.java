@@ -16,10 +16,33 @@ public final class Snap {
     public boolean firstShoot;
     public int clickTarget;
     public String ruleClass = "";
+    public int currentPlayer = -1;
+
+    /**
+     * Target legal untuk pemain yang sedang giliran, ditanyakan langsung
+     * ke rule game yang hidup lewat PoolRule.isAvailableTarget(
+     * RoundState, PoolBall[], int) — oracle yang sama yang dipakai AI
+     * bawaan game (VsaiRuleBase$1.think hanya mempertimbangkan bola yang
+     * lolos metode ini):
+     *   Vsai8Ball : campstate 0 = meja terbuka (semua bola non-cue),
+     *               campstate 2/3 = hanya grup pemain yang giliran
+     *               (1..7 atau 9..15), bola 8 hanya bila grup itu habis.
+     *   Vsai9Ball : hanya bola bernomor terendah yang masih di meja.
+     *   RuleImplBase (Time/Arcade/Tutorial): semua bola non-cue.
+     * legalKnown=false berarti oracle tidak bisa ditanyakan — autoplay
+     * WAJIB menolak menembak (tidak menebak target).
+     */
+    public boolean[] legal;
+    public boolean legalKnown;
+    /** Bola penentu menang: 8 untuk Vsai8Ball, 9 untuk Vsai9Ball, -1 lain. */
+    public int moneyBall = -1;
 
     // referensi hidup — hanya untuk canPut (baca-saja) & info kelas rule
     private Object ruleObj;
     private Object ballsArrObj;
+
+    private static Class<?> roundStateCls;
+    private static boolean roundStateClsTried;
 
     public static Snap capture(Object table, Object rule, Object roundstate) {
         try {
@@ -47,6 +70,10 @@ public final class Snap {
             s.firstShoot = Ref.getB(table, "isFirstShoot");
             s.clickTarget = Ref.invokeI(rule, "getClickTarget",
                     new Class<?>[]{roundstate.getClass()}, roundstate);
+            s.currentPlayer = Ref.getI(roundstate, "currentPlayer");
+            s.moneyBall = s.ruleClass.startsWith("Vsai8") ? 8
+                    : (s.ruleClass.startsWith("Vsai9") ? 9 : -1);
+            captureLegal(s, rule, roundstate, ballsArr);
 
             s.balls = new Sim.Ball[ballsArr.length];
             for (int i = 0; i < ballsArr.length; i++) {
@@ -110,6 +137,42 @@ public final class Snap {
         sim.clickTarget = clickTarget;
         sim.loadSnapshot(balls, blockers, holes);
         return sim;
+    }
+
+    /**
+     * Tanyakan target legal ke rule hidup: isAvailableTarget untuk tiap
+     * bola. Dipanggil di thread game saat snapshot dibuat (state meja
+     * beku selama state bidik). Gagal total -> legalKnown=false.
+     */
+    private static void captureLegal(Snap s, Object rule, Object roundstate, Object[] ballsArr) {
+        s.legal = new boolean[ballsArr.length];
+        s.legalKnown = false;
+        try {
+            if (!roundStateClsTried) {
+                roundStateClsTried = true;
+                roundStateCls = Ref.cls("com.forthblue.pool.rules.PoolRule$RoundState");
+            }
+            if (roundStateCls == null) {
+                return;
+            }
+            Class<?>[] sig = new Class<?>[]{roundStateCls, ballsArr.getClass(), int.class};
+            boolean any = false;
+            for (int i = 0; i < ballsArr.length; i++) {
+                if (i == s.clickTarget) {
+                    s.legal[i] = false;
+                    continue;
+                }
+                Object v = Ref.invoke(rule, "isAvailableTarget", sig, roundstate, ballsArr, i);
+                if (!(v instanceof Boolean)) {
+                    return; // oracle tidak menjawab — jangan menebak
+                }
+                s.legal[i] = (Boolean) v;
+                any = true;
+            }
+            s.legalKnown = any || ballsArr.length <= 1;
+        } catch (Throwable t) {
+            s.legalKnown = false;
+        }
     }
 
     /** Validasi penempatan freeball memakai rule asli (canPut). */

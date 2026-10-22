@@ -3,37 +3,71 @@ package com.hozin.poolmod;
 import java.util.ArrayList;
 
 /**
- * Auto play pintar: pencarian tembakan memakai klon Sim.
+ * Auto play v1.1 — pencarian tembakan di atas klon Sim dengan tiga lapis
+ * disiplin yang TIDAK ada di v1 (dan menjadi akar kegagalannya di HP):
  *
- * Kandidat sudut TIDAK disapu membabi buta: untuk tiap pasangan
- * (bola objek, lubang) dihitung sudut ghost-ball geometris, lalu 3
- * tingkat strength di sekitar perkiraan jarak. Tiap kandidat
- * disimulasikan penuh oleh klon dan diberi skor:
- *   bola objek masuk +1000/ball (9-ball: bola target terendah +1000,
- *   bola lain +250 dan kontak pertama wajib bola target, -900),
- *   bola putih ikut masuk -100000, tanpa kontak bola -700,
- *   posisi akhir bola putih dekat bola berikutnya & jauh dari lubang.
- * Bila tak ada yang memasukkan bola, fase spin mencoba varian
- * spinY/spinX pada kandidat terbaik; terakhir sapuan halus di sekitar
- * arah tiap bola objek. Freeball: titik penempatan dicari di garis
- * ghost-ball (divalidasi rule.canPut asli), lalu tembakan terbaik dari
- * titik itu.
+ *  1. TARGET LEGAL DARI GAME, BUKAN DARI SKOR. Kandidat hanya dibuat
+ *     untuk bola yang dinyatakan legal oleh rule yang hidup lewat
+ *     PoolRule.isAvailableTarget (tertanam di Snap.legal): grup
+ *     solids/stripes pemain yang giliran di 8-ball, meja terbuka,
+ *     bola 8 hanya bila grup habis, bola terendah di 9-ball. Bila
+ *     oracle tidak bisa ditanyakan (Snap.legalKnown=false) autoplay
+ *     MENOLAK menembak — tidak ada tebakan.
  *
- * Pencarian berjalan di thread pekerja dari snapshot; eksekusi
- * diserahkan ke thread game lewat pendingExec (Hooks) yang memeriksa
- * ulang gerbang PvP + kesesuaian posisi sebelum PoolTable.click.
+ *  2. SARINGAN KERAS (bukan penalti skor). Setiap kandidat disimulasikan
+ *     dengan parameter PERSIS yang akan dikirim ke PoolTable.click
+ *     (strength, spinX, spinY, angle derajat — konvensi terverifikasi
+ *     identik dengan GameScene: table.click(aimStrength, aimPx,
+ *     aimPy, aimAngle)). Kandidat DIBUANG TOTAL bila hasil klonnya:
+ *       - bola putih masuk lubang (scratch), ATAU
+ *       - kontak pertama bukan bola target legal (foul menurut
+ *         onHitBall game sendiri), ATAU
+ *       - tidak menyentuh bola sama sekali, ATAU
+ *       - bola non-target masuk TANPA satu pun bola target legal
+ *         masuk, ATAU
+ *       - bola 8 masuk padahal belum legal (kalah langsung di
+ *         Vsai8Ball: fouled + pooledball8 -> setLose).
+ *     Pengecualian satu-satunya: di 9-ball, bola 9 yang masuk setelah
+ *     kontak pertama legal adalah KEMENANGAN (pooledball9 && !fouled
+ *     -> setWin di Vsai9Ball.onRoundOver), jadi diperlakukan sebagai
+ *     pot legal bernilai tertinggi.
+ *
+ *  3. PILIH YANG PALING "ENAK", BUKAN SEKADAR MASUK. Kandidat pot yang
+ *     lolos saringan diuji ketahanan: sudut digeser ±0,15°/±0,3° dan
+ *     strength ±5%; yang tetap memasukkan bola target yang sama
+ *     (dan tetap lolos saringan) pada rentang perturbasi terlebar
+ *     menang. Sudut potong kecil & jarak pendek jadi penyeimbang.
+ *     Tembakan pisau-di-tepi-lubang — yang di v1 scratch di perangkat
+ *     walau klon bilang aman — otomatis tersingkir di sini.
+ *
+ *  Bila tidak ada pot yang lolos: TEMBAKAN PENGAMAN — sentuh bola
+ *  target legal selembut mungkin (kontak pertama legal, tanpa scratch,
+ *  tanpa bola liar masuk, bola putih berakhir jauh dari lubang).
+ *  Bila itu pun tidak ada: TIDAK MENEMBAK (null) — pemain memutuskan
+ *  sendiri. Tidak ada lagi fallback buta v1.
+ *
+ *  Catatan kejujuran: Sim.Result tidak merekam URUTAN bola masuk,
+ *  jadi aturan "non-target masuk" dinilai sebagai himpunan (boleh
+ *  bila ada target legal yang ikut masuk), kecuali bola 8 yang selalu
+ *  ditolak ketat. Pencarian berjalan di thread pekerja dari snapshot;
+ *  eksekusi diserahkan ke Hooks (periksa ulang gerbang PvP + posisi).
  */
 public final class Auto {
     public static final class Shot {
         public float strength, spinX, spinY, angle, score;
         public int potted;
         public boolean freeball;
+        public boolean safety;
+        public int targetBall = -1;
+        public int robust;
         public float spotX, spotY;
         public long posKey;
     }
 
     public static volatile Shot pendingExec;
     public static volatile Snap pendingSnap;
+    /** Hasil pencarian terakhir: "pot" | "aman" | "tidak ada tembakan aman" | "" */
+    public static volatile String lastOutcome = "";
 
     private Auto() {
     }
@@ -59,6 +93,13 @@ public final class Auto {
                         s.posKey = snap.positionKey();
                         pendingSnap = snap;
                         pendingExec = s;
+                        lastOutcome = s.safety ? "aman" : "pot";
+                        ModState.statusText = "";
+                    } else {
+                        lastOutcome = "tidak ada tembakan aman";
+                        ModState.statusText =
+                                "Auto: tidak ada tembakan aman — main manual";
+                        ModState.statusMs = System.currentTimeMillis();
                     }
                 } catch (Throwable ignored) {
                 }
@@ -84,42 +125,68 @@ public final class Auto {
         return clamp(650.0f + (d1 + d2) * 0.95f, snap.minStrength, snap.maxStrength);
     }
 
-    private static int lowestObject(Snap snap) {
-        int best = -1;
-        for (int i = 0; i < snap.balls.length; i++) {
-            if (i != snap.clickTarget && snap.balls[i].avail) {
-                if (best < 0 || i < best) {
-                    best = i;
-                }
-            }
-        }
-        return best;
+    private static boolean isLegal(Snap snap, int i) {
+        return snap.legal != null && i >= 0 && i < snap.legal.length && snap.legal[i];
     }
 
-    private static float score(Snap snap, Sim.Result r, float strength, boolean nine, int lowestObj) {
-        float sc = 0.0f;
+    // ----------------------------------------------------------------
+    // SARINGAN KERAS — dinilai dari hasil klon satu tembakan.
+    // Mengisi out[0]=jumlah pot legal, out[1]=pot money legal (0/1).
+    // ----------------------------------------------------------------
+    static boolean passesFilter(Snap snap, Sim.Result r, int[] out) {
         int cue = snap.clickTarget;
+        if (r.cuePotted) {
+            return false; // scratch — aib v1, sekarang mustahil lolos
+        }
+        if (r.firstContact < 0 || !isLegal(snap, r.firstContact)) {
+            return false; // tak menyentuh bola / kontak pertama foul
+        }
+        int legalPots = 0;
+        boolean illegalPot = false;
+        boolean moneyWin = false;
         for (int i = 0; i < snap.balls.length; i++) {
-            if (i != cue && r.potted[i]) {
-                if (nine) {
-                    sc += i == lowestObj ? 1000.0f : 250.0f;
+            if (i == cue || !r.potted[i]) {
+                continue;
+            }
+            if (i == snap.moneyBall && !isLegal(snap, i)) {
+                if (snap.moneyBall == 9) {
+                    // 9-ball: bola 9 masuk setelah kontak pertama legal
+                    // = menang (foul sudah disaring di atas).
+                    moneyWin = true;
                 } else {
-                    sc += 1000.0f;
+                    // 8-ball: bola 8 masuk sebelum legal = kalah.
+                    return false;
                 }
+            } else if (isLegal(snap, i)) {
+                legalPots++;
+            } else {
+                illegalPot = true;
             }
         }
-        if (r.firstContact < 0) {
-            sc -= 700.0f;
+        if (illegalPot && legalPots == 0 && !moneyWin) {
+            return false; // memasukkan bola lawan tanpa target sendiri
         }
-        if (nine && lowestObj >= 0 && r.firstContact != lowestObj) {
-            sc -= 900.0f;
+        if (out != null) {
+            out[0] = legalPots;
+            out[1] = moneyWin ? 1 : 0;
         }
-        if (r.cuePotted) {
-            sc -= 100000.0f;
+        return true;
+    }
+
+    /** Skor dasar kandidat yang LOLOS saringan (pot). */
+    private static float baseScore(Snap snap, Sim.Result r, int legalPots, boolean moneyWin,
+                                   float strength, float cutDeg, float travel) {
+        float sc = legalPots * 1000.0f;
+        if (moneyWin || (snap.moneyBall > 0 && r.potted[snap.moneyBall]
+                && isLegal(snap, snap.moneyBall))) {
+            sc += 5000.0f;
         }
+        // posisi akhir bola putih: dekat target legal berikutnya, jauh
+        // dari lubang (nilai kecil — penyeimbang, bukan penentu)
+        int cue = snap.clickTarget;
         float nearest = Float.MAX_VALUE;
         for (int i = 0; i < snap.balls.length; i++) {
-            if (i != cue && snap.balls[i].avail && !r.potted[i]) {
+            if (i != cue && snap.balls[i].avail && !r.potted[i] && isLegal(snap, i)) {
                 float d = dist(r.stopX[cue], r.stopY[cue], snap.balls[i].x, snap.balls[i].y);
                 if (d < nearest) {
                     nearest = d;
@@ -127,7 +194,7 @@ public final class Auto {
             }
         }
         if (nearest < Float.MAX_VALUE) {
-            sc += Math.max(0.0f, 400.0f - nearest) * 0.35f;
+            sc += Math.max(0.0f, 400.0f - nearest) * 0.3f;
         }
         for (int h = 0; h < snap.holes.length; h++) {
             float d = dist(r.stopX[cue], r.stopY[cue], snap.holes[h].x, snap.holes[h].y);
@@ -135,44 +202,105 @@ public final class Auto {
                 sc -= (130.0f - d) * 1.2f;
             }
         }
+        sc -= cutDeg * 6.0f;              // potong lurus lebih enak
+        sc -= travel * 0.05f;             // dekat lebih enak
         sc -= strength * 0.002f;
         return sc;
     }
 
-    private static int countPotted(Snap snap, Sim.Result r) {
-        int c = 0;
-        for (int i = 0; i < snap.balls.length; i++) {
-            if (i != snap.clickTarget && r.potted[i]) {
-                c++;
-            }
+    /** Satu kandidat pot yang sudah lolos saringan dasar. */
+    private static final class Cand {
+        float angle, strength;
+        int target;
+        int legalPots;
+        boolean moneyWin;
+        float cutDeg, travel, score;
+        int robust;
+        float spotX, spotY;
+        boolean hasSpot;
+    }
+
+    private static Cand evalPot(Sim sim, Snap snap, float angle, float strength, int target,
+                                float cutDeg, float travel) {
+        Sim.Result r = sim.simulate(strength, 0.0f, 0.0f, angle, false);
+        int[] out = new int[2];
+        if (!passesFilter(snap, r, out)) {
+            return null;
         }
+        if (out[0] == 0 && out[1] == 0) {
+            return null; // lolos saringan tapi tidak memasukkan apa pun
+        }
+        if (!r.potted[target] && out[1] == 0) {
+            return null; // target yang dibidik tidak masuk — bukan pot ini
+        }
+        Cand c = new Cand();
+        c.angle = angle;
+        c.strength = strength;
+        c.target = target;
+        c.legalPots = out[0];
+        c.moneyWin = out[1] != 0;
+        c.cutDeg = cutDeg;
+        c.travel = travel;
+        c.score = baseScore(snap, r, out[0], c.moneyWin, strength, cutDeg, travel);
         return c;
     }
 
-    private static Shot eval(Sim sim, Snap snap, float angle, float strength,
-                             float spinX, float spinY, boolean nine, int lowestObj) {
-        Sim.Result r = sim.simulate(strength, spinX, spinY, angle, false);
+    /**
+     * Uji ketahanan: berapa perturbasi (sudut ±0,15/±0,3°, strength
+     * ±5%) yang tetap memasukkan target yang sama & lolos saringan.
+     */
+    private static int robustness(Sim sim, Snap snap, Cand c) {
+        float[] dAng = {-0.3f, -0.15f, 0.15f, 0.3f};
+        int ok = 0;
+        for (int i = 0; i < dAng.length; i++) {
+            Sim.Result r = sim.simulate(c.strength, 0.0f, 0.0f, c.angle + dAng[i], false);
+            int[] out = new int[2];
+            if (passesFilter(snap, r, out) && (r.potted[c.target] || out[1] != 0)) {
+                ok++;
+            }
+        }
+        float[] mStr = {0.95f, 1.05f};
+        for (int i = 0; i < mStr.length; i++) {
+            float st = clamp(c.strength * mStr[i], snap.minStrength, snap.maxStrength);
+            Sim.Result r = sim.simulate(st, 0.0f, 0.0f, c.angle, false);
+            int[] out = new int[2];
+            if (passesFilter(snap, r, out) && (r.potted[c.target] || out[1] != 0)) {
+                ok++;
+            }
+        }
+        return ok; // 0..6
+    }
+
+    private static Shot toShot(Cand c, int robust) {
         Shot s = new Shot();
-        s.angle = angle;
-        s.strength = strength;
-        s.spinX = spinX;
-        s.spinY = spinY;
-        s.potted = countPotted(snap, r);
-        s.score = score(snap, r, strength, nine, lowestObj);
+        s.angle = c.angle;
+        s.strength = c.strength;
+        s.spinX = 0.0f;
+        s.spinY = 0.0f;
+        s.targetBall = c.target;
+        s.potted = c.legalPots;
+        s.robust = robust;
+        s.score = c.score + robust * 250.0f;
+        s.safety = false;
+        if (c.hasSpot) {
+            s.spotX = c.spotX;
+            s.spotY = c.spotY;
+        }
         return s;
     }
 
     // ----------------------------------------------------------------
     public static Shot searchShot(Snap snap) {
+        if (!snap.legalKnown) {
+            return null; // oracle target tidak terbaca — jangan menembak
+        }
         Sim sim = snap.newSim();
-        boolean nine = snap.ruleClass.contains("9");
-        int lowestObj = lowestObject(snap);
         Sim.Ball cue = sim.protoBall(snap.clickTarget);
 
-        ArrayList<float[]> cand = new ArrayList<float[]>();
+        ArrayList<Cand> cands = new ArrayList<Cand>();
         for (int b = 0; b < snap.balls.length; b++) {
-            if (b == snap.clickTarget || !snap.balls[b].avail) {
-                continue;
+            if (b == snap.clickTarget || !snap.balls[b].avail || !isLegal(snap, b)) {
+                continue; // HANYA bola target legal milik pemain
             }
             Sim.Ball ball = snap.balls[b];
             for (int h = 0; h < snap.holes.length; h++) {
@@ -188,98 +316,142 @@ public final class Auto {
                 float ghostDist = cue.scale + ball.scale;
                 float gx = ball.x - ux * ghostDist;
                 float gy = ball.y - uy * ghostDist;
-                float ang = (float) Math.toDegrees(Math.atan2(gy - cue.y, gx - cue.x));
-                float d1 = dist(cue.x, cue.y, gx, gy);
-                float est = estStrength(snap, d1, len);
-                cand.add(new float[]{ang, clamp(est * 0.75f, snap.minStrength, snap.maxStrength)});
-                cand.add(new float[]{ang, est});
-                cand.add(new float[]{ang, clamp(est * 1.3f, snap.minStrength, snap.maxStrength)});
-            }
-        }
-
-        Shot best = null;
-        ArrayList<Shot> top = new ArrayList<Shot>();
-        for (int i = 0; i < cand.size(); i++) {
-            float[] c = cand.get(i);
-            Shot s = eval(sim, snap, c[0], c[1], 0.0f, 0.0f, nine, lowestObj);
-            if (best == null || s.score > best.score) {
-                best = s;
-            }
-            top.add(s);
-        }
-
-        if (best == null) {
-            // tak ada bola objek sama sekali: tembak lurus seperlunya
-            Shot s = new Shot();
-            s.angle = 0.0f;
-            s.strength = snap.minStrength;
-            s.score = -Float.MAX_VALUE;
-            return s;
-        }
-
-        // fase spin: hanya bila belum ada yang memasukkan bola
-        if (best.potted == 0) {
-            // urutkan top menurun berdasarkan skor (seleksi sederhana)
-            for (int i = 0; i < top.size(); i++) {
-                for (int j = i + 1; j < top.size(); j++) {
-                    if (top.get(j).score > top.get(i).score) {
-                        Shot tmp = top.get(i);
-                        top.set(i, top.get(j));
-                        top.set(j, tmp);
-                    }
-                }
-            }
-            float[][] spins = {{0.0f, 0.45f}, {0.0f, -0.45f}, {0.35f, 0.0f}, {-0.35f, 0.0f}};
-            int lim = Math.min(6, top.size());
-            for (int i = 0; i < lim; i++) {
-                Shot base = top.get(i);
-                for (int k = 0; k < spins.length; k++) {
-                    Shot s = eval(sim, snap, base.angle, base.strength,
-                            spins[k][0], spins[k][1], nine, lowestObj);
-                    if (s.score > best.score) {
-                        best = s;
-                    }
-                }
-            }
-        }
-
-        // fallback: sapuan halus arah tiap bola objek bila belum kontak/pot
-        if (best.potted == 0 && best.score < -600.0f) {
-            for (int b = 0; b < snap.balls.length; b++) {
-                if (b == snap.clickTarget || !snap.balls[b].avail) {
+                float vx = gx - cue.x;
+                float vy = gy - cue.y;
+                float d1 = (float) Math.sqrt(vx * vx + vy * vy);
+                if (d1 < 1.0f) {
                     continue;
                 }
-                Sim.Ball ball = snap.balls[b];
-                float baseAng = (float) Math.toDegrees(Math.atan2(ball.y - cue.y, ball.x - cue.x));
-                float dc = dist(cue.x, cue.y, ball.x, ball.y);
-                float spread = (float) Math.toDegrees(Math.atan2(cue.scale + ball.scale + 6.0f, Math.max(dc, 1.0f)));
-                float est = estStrength(snap, dc, 600.0f);
-                for (int k = -12; k <= 12; k++) {
-                    float ang = baseAng + spread * (k / 12.0f);
-                    Shot s = eval(sim, snap, ang, est, 0.0f, 0.0f, nine, lowestObj);
-                    if (s.score > best.score) {
-                        best = s;
+                float ang = (float) Math.toDegrees(Math.atan2(vy, vx));
+                // sudut potong: arah cue->ghost vs arah bola->lubang
+                float dot = (vx / d1) * ux + (vy / d1) * uy;
+                float cut = (float) Math.toDegrees(Math.acos(
+                        Math.max(-1.0f, Math.min(1.0f, dot))));
+                float est = estStrength(snap, d1, len);
+                float[] sts = {clamp(est * 0.75f, snap.minStrength, snap.maxStrength),
+                        est,
+                        clamp(est * 1.3f, snap.minStrength, snap.maxStrength)};
+                for (int si = 0; si < sts.length; si++) {
+                    Cand c = evalPot(sim, snap, ang, sts[si], b, cut, d1 + len);
+                    if (c != null) {
+                        cands.add(c);
                     }
                 }
+            }
+        }
+
+        Cand best = pickMostRobust(sim, snap, cands);
+        if (best != null) {
+            return toShot(best, best.robust);
+        }
+        return searchSafety(sim, snap);
+    }
+
+    /** Dari kandidat pot yang lolos: pilih robust tertinggi, lalu skor. */
+    private static Cand pickMostRobust(Sim sim, Snap snap, ArrayList<Cand> cands) {
+        if (cands.isEmpty()) {
+            return null;
+        }
+        // ambil 8 terbaik berdasar skor dasar untuk uji ketahanan
+        for (int i = 0; i < cands.size(); i++) {
+            for (int j = i + 1; j < cands.size(); j++) {
+                if (cands.get(j).score > cands.get(i).score) {
+                    Cand tmp = cands.get(i);
+                    cands.set(i, cands.get(j));
+                    cands.set(j, tmp);
+                }
+            }
+        }
+        int lim = Math.min(8, cands.size());
+        Cand best = null;
+        for (int i = 0; i < lim; i++) {
+            Cand c = cands.get(i);
+            c.robust = robustness(sim, snap, c);
+            if (best == null
+                    || c.robust > best.robust
+                    || (c.robust == best.robust && c.score > best.score)) {
+                best = c;
             }
         }
         return best;
     }
 
     // ----------------------------------------------------------------
+    // TEMBAKAN PENGAMAN: sentuh target legal selembut mungkin.
+    // ----------------------------------------------------------------
+    private static Shot searchSafety(Sim sim, Snap snap) {
+        Sim.Ball cue = sim.protoBall(snap.clickTarget);
+        Shot best = null;
+        float bestScore = -Float.MAX_VALUE;
+        float[] strengths = {260.0f, 340.0f, 450.0f, 600.0f};
+        for (int b = 0; b < snap.balls.length; b++) {
+            if (b == snap.clickTarget || !snap.balls[b].avail || !isLegal(snap, b)) {
+                continue;
+            }
+            Sim.Ball ball = snap.balls[b];
+            float dc = dist(cue.x, cue.y, ball.x, ball.y);
+            // bidik titik kontak: tengah + geser setengah bola dua sisi
+            float perpX = -(ball.y - cue.y) / Math.max(dc, 1.0f);
+            float perpY = (ball.x - cue.x) / Math.max(dc, 1.0f);
+            float[] offs = {0.0f, -0.45f, 0.45f};
+            for (int oi = 0; oi < offs.length; oi++) {
+                float tx = ball.x + perpX * ball.scale * offs[oi];
+                float ty = ball.y + perpY * ball.scale * offs[oi];
+                float ang = (float) Math.toDegrees(Math.atan2(ty - cue.y, tx - cue.x));
+                for (int si = 0; si < strengths.length; si++) {
+                    float st = clamp(strengths[si] + dc * 0.35f,
+                            snap.minStrength, snap.maxStrength);
+                    Sim.Result r = sim.simulate(st, 0.0f, 0.0f, ang, false);
+                    int[] out = new int[2];
+                    if (!passesFilter(snap, r, out)) {
+                        continue;
+                    }
+                    if (out[0] > 0 || out[1] > 0) {
+                        continue; // ini pot, bukan pengaman (tak terjangkau
+                        // karena pot sudah dicari lebih dulu)
+                    }
+                    // nilai pengaman: bola putih berakhir jauh dari
+                    // lubang + strength kecil + target bergeser cukup
+                    float sc = -st * 0.01f;
+                    for (int h = 0; h < snap.holes.length; h++) {
+                        float d = dist(r.stopX[snap.clickTarget], r.stopY[snap.clickTarget],
+                                snap.holes[h].x, snap.holes[h].y);
+                        sc += Math.min(d, 500.0f) * 0.02f;
+                    }
+                    float moved = dist(ball.x, ball.y,
+                            r.stopX[b], r.stopY[b]);
+                    sc += Math.min(moved, 300.0f) * 0.05f;
+                    if (sc > bestScore) {
+                        bestScore = sc;
+                        Shot s = new Shot();
+                        s.angle = ang;
+                        s.strength = st;
+                        s.targetBall = b;
+                        s.safety = true;
+                        s.score = sc;
+                        best = s;
+                    }
+                }
+            }
+        }
+        return best; // boleh null -> benar-benar tidak menembak
+    }
+
+    // ----------------------------------------------------------------
     public static Shot searchFreeball(Snap snap) {
+        if (!snap.legalKnown) {
+            return null;
+        }
         Sim sim = snap.newSim();
-        boolean nine = snap.ruleClass.contains("9");
-        int lowestObj = lowestObject(snap);
         Sim.Ball cueProto = sim.protoBall(snap.clickTarget);
         float origX = cueProto.x;
         float origY = cueProto.y;
 
-        Shot best = null;
+        ArrayList<Cand> cands = new ArrayList<Cand>();
         float[] depths = {300.0f, 600.0f, 1000.0f};
         for (int b = 0; b < snap.balls.length; b++) {
-            if (b == snap.clickTarget || !snap.balls[b].avail) {
-                continue;
+            if (b == snap.clickTarget || !snap.balls[b].avail || !isLegal(snap, b)) {
+                continue; // hanya target legal
             }
             Sim.Ball ball = snap.balls[b];
             for (int h = 0; h < snap.holes.length; h++) {
@@ -304,31 +476,34 @@ public final class Auto {
                     sim.setProtoPosition(snap.clickTarget, sx, sy);
                     float ang = (float) Math.toDegrees(Math.atan2(gy - sy, gx - sx));
                     float est = estStrength(snap, depths[di], len);
-                    Shot s = eval(sim, snap, ang, est, 0.0f, 0.0f, nine, lowestObj);
-                    s.spotX = sx;
-                    s.spotY = sy;
-                    if (best == null || s.score > best.score) {
-                        best = s;
+                    Cand c = evalPot(sim, snap, ang, est, b, 0.0f, depths[di] + len);
+                    if (c != null) {
+                        c.spotX = sx;
+                        c.spotY = sy;
+                        c.hasSpot = true;
+                        cands.add(c);
                     }
                 }
             }
         }
         sim.setProtoPosition(snap.clickTarget, origX, origY);
-        if (best != null) {
-            // perhalus strength di titik terbaik
-            sim.setProtoPosition(snap.clickTarget, best.spotX, best.spotY);
-            float[] mults = {0.8f, 1.25f};
-            for (int i = 0; i < mults.length; i++) {
-                float st = clamp(best.strength * mults[i], snap.minStrength, snap.maxStrength);
-                Shot s = eval(sim, snap, best.angle, st, 0.0f, 0.0f, nine, lowestObj);
-                s.spotX = best.spotX;
-                s.spotY = best.spotY;
-                if (s.score > best.score) {
-                    best = s;
-                }
+
+        // Pemenang dipilih dari skor dasar; ketahanannya diuji dengan
+        // proto cue diparkir di spot pemenang (perturbasi hanya valid
+        // pada titik penempatan itu).
+        Cand best = null;
+        for (int i = 0; i < cands.size(); i++) {
+            Cand c = cands.get(i);
+            if (best == null || c.score > best.score) {
+                best = c;
             }
-            sim.setProtoPosition(snap.clickTarget, origX, origY);
         }
-        return best;
+        if (best == null) {
+            return null; // tidak ada penempatan pot yang aman & legal
+        }
+        sim.setProtoPosition(snap.clickTarget, best.spotX, best.spotY);
+        int rob = robustness(sim, snap, best);
+        sim.setProtoPosition(snap.clickTarget, origX, origY);
+        return toShot(best, rob);
     }
 }

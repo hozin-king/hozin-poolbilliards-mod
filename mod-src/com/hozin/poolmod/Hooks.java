@@ -123,8 +123,70 @@ public final class Hooks {
             }
         }
 
+        // --- auto play OTOMATIS (saklar menu, default OFF) ---
+        maybeAutoTrigger(table, rule, roundstate, state, ptype);
+
         // --- prediksi / long line saat membidik ---
         updatePrediction(scene, table, rule, roundstate, state, ptype);
+    }
+
+    /**
+     * Pemicu mode otomatis: hanya pada giliran manusia di mode offline
+     * (gerbang PvP sudah ditegakkan latch + cek segar sebelum titik
+     * ini, dan Auto.startSearch memeriksa isPVPMode() lagi). Meja
+     * harus stabil: pasangan (state, tipe pemain) tidak berubah
+     * >=900 ms, lalu dua probe posisi berjarak >=700 ms harus sama
+     * persis — jadi tembakan pertama keluar ±1,6 detik setelah meja
+     * berhenti, dan tidak pernah saat bola/posisi masih bergerak.
+     * autoHoldKey menahan pemicu untuk posisi yang sama (termasuk
+     * sesudah keputusan "tidak ada tembakan aman"), sehingga mode
+     * otomatis tidak mengulang pencarian tanpa perubahan meja.
+     */
+    private static void maybeAutoTrigger(Object table, Object rule, Object roundstate,
+                                         int state, int ptype) {
+        boolean humanAim = state == 1 && ptype == 0;
+        boolean humanFree = state == 3 && ptype == 0;
+        if (!ModState.autoOn || ModState.autoBusy || Auto.pendingExec != null
+                || !(humanAim || humanFree)) {
+            ModState.autoPair = -1;
+            ModState.autoProbeKey = Long.MIN_VALUE;
+            return;
+        }
+        if (Ref.getI(roundstate, "winner") != -1) {
+            return; // ronde sudah selesai
+        }
+        long now = System.currentTimeMillis();
+        int pair = state * 4 + Ref.getI(roundstate, "currentPlayer");
+        if (pair != ModState.autoPair) {
+            ModState.autoPair = pair;
+            ModState.autoPairSinceMs = now;
+            ModState.autoProbeKey = Long.MIN_VALUE;
+            return;
+        }
+        if (now - ModState.autoPairSinceMs < 900L) {
+            return;
+        }
+        if (ModState.autoProbeKey != Long.MIN_VALUE && now - ModState.autoProbeMs < 700L) {
+            return;
+        }
+        Snap probe = Snap.capture(table, rule, roundstate);
+        if (probe == null) {
+            return;
+        }
+        long key = probe.positionKey() * 31L + state;
+        if (key == ModState.autoProbeKey) {
+            // posisi stabil pada dua probe -> tembak sekarang
+            if (key != ModState.autoHoldKey) {
+                ModState.autoHoldKey = key;
+                // GERBANG PvP segar tepat sebelum memicu pencarian
+                if (!Ref.invokeB(rule, "isPVPMode")) {
+                    Auto.startSearch(table, rule, roundstate, state);
+                }
+            }
+        } else {
+            ModState.autoProbeKey = key;
+            ModState.autoProbeMs = now;
+        }
     }
 
     private static void executeShot(Object scene, Object table, Object rule,

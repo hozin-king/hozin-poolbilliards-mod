@@ -91,6 +91,14 @@ def main() -> int:
         assert "BLOCK_HIT_LOST" in sim and "ROLL_K" in sim, "konstanta fisika Sim tidak ditemukan"
         print("4c. gerbang isPVPMode dirujuk Hooks & Auto; konstanta Sim ada")
 
+        snap = open(os.path.join(moddir, "Snap.smali"), encoding="utf-8").read()
+        assert "isAvailableTarget" in snap, "oracle target legal tidak ditemukan di Snap"
+        assert "passesFilter" in auto, "saringan keras autoplay tidak ditemukan di Auto"
+        mm = open(os.path.join(moddir, "ModMenu.smali"), encoding="utf-8").read()
+        assert "Auto Play Otomatis" in mm, "saklar Auto Play Otomatis tidak ditemukan di ModMenu"
+        print("4d. v1.1: oracle isAvailableTarget (Snap), saringan keras (Auto), "
+              "saklar otomatis (ModMenu) tertanam")
+
     print("VERIFY OK:", final_apk, os.path.getsize(final_apk), "byte")
     return 0
 

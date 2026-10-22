@@ -9,9 +9,22 @@ package com.hozin.poolmod;
  * freeball) MEMERIKSA rule.isPVPMode() secara langsung lagi.
  */
 public final class ModState {
-    // saklar pengguna (default sesuai spek: prediksi ON, long line ON)
+    // saklar pengguna (default sesuai spek: prediksi ON, long line ON,
+    // auto play otomatis OFF — hanya jalan bila user menyalakannya)
     public static volatile boolean predictOn = true;
     public static volatile boolean longLineOn = true;
+    public static volatile boolean autoOn = false;
+
+    // mesin pemicu auto play otomatis (diisi Hooks di thread game):
+    // pasangan (state,giliran) stabil -> dua probe posisi berjarak
+    // >=700 ms yang sama -> pencarian; autoHoldKey mencegah pengulangan
+    // untuk posisi meja yang sama (termasuk keputusan "tidak menembak").
+    public static volatile int autoPair = -1;
+    public static volatile long autoPairSinceMs = 0L;
+    public static volatile long autoProbeKey = Long.MIN_VALUE;
+    public static volatile long autoProbeMs = 0L;
+    public static volatile long autoHoldKey = Long.MIN_VALUE;
+    public static volatile long statusMs = 0L;
 
     // ditulis thread game tiap tick
     public static volatile long lastTickMs = 0L;
