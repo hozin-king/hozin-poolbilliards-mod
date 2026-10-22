@@ -1,0 +1,105 @@
+name: Build Mod Pool Billiards
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'build.sh'
+      - 'apply_patches.py'
+      - 'verify.py'
+      - 'mod-src/**'
+      - 'tests/**'
+      - 'original/**'
+      - '.github/workflows/build.yml'
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install platform + build-tools 34 (SDK bawaan runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Unduh apktool 2.10.0
+        run: |
+          curl -sL -o apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          java -jar apktool.jar --version
+
+      - name: Uji konsistensi klon fisika (JVM)
+        run: |
+          mkdir -p /tmp/simtest
+          javac -encoding UTF-8 -proc:none -d /tmp/simtest \
+            mod-src/com/hozin/poolmod/Sim.java tests/TestSim.java
+          java -cp /tmp/simtest com.hozin.poolmod.TestSim
+
+      - name: Build APK mod (gabung)
+        env:
+          APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
+        run: bash build.sh
+
+      - name: Verifikasi APK final
+        env:
+          APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.apk "original/Pool_Billiards_Pro_5.3.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poolbilliards-mod-apk
+          path: PoolBilliardsPro-Mod-v1.apk
+
+      - name: Buat GitHub Release (hanya tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pool Billiards Pro Mod ${{ github.ref_name }}
+          body: |
+            Mod Pool Billiards Pro 5.3 (versionCode 53, com.forthblue.pool) —
+            mod DIGABUNG ke dalam APK game (tanpa root, tanpa injector
+            terpisah), dibangun GitHub Actions dari sumber di repo ini,
+            lolos uji konsistensi klon fisika (JVM) dan verify.py.
+
+            Fitur:
+            1. Long line — garis bidik diperpanjang memakai
+               PoolTable.calcAimTarget() milik game sendiri.
+            2. Prediksi penuh — klon fisika game dijalankan pada salinan
+               state meja: polyline lintasan tiap bola dengan warnanya
+               sendiri (rantai tabrakan bercabang), tanda X di titik
+               berhenti, pantulan cushion restitusi 0,8 + kopling spin
+               versi game. Dihitung ulang seketika saat sudut/power/spin
+               berubah.
+            3. Auto play pintar — pencarian tembakan di atas klon
+               (kandidat ghost-ball x strength, diskor: bola masuk, bola
+               putih tidak foul/ikut masuk, posisi akhir untuk tembakan
+               berikutnya; fase spin bila perlu), eksekusi lewat
+               PoolTable.click() — jalur yang sama dengan pemain & AI.
+               Pada freeball, titik penempatan dicari dan divalidasi
+               rule.canPut() sebelum putFreeball().
+            4. Menu melayang MOD (jendela WindowManager, bisa digeser):
+               saklar Long Line / Prediksi Penuh + tombol AUTO PLAY.
+
+            BATAS KERAS: semua fitur mati total di mode PvP online
+            (rule.isPVPMode()) — latch + pemeriksaan di setiap titik
+            masuk fitur, menu disembunyikan. Hanya untuk mode offline:
+            VS Computer, Time, Arcade/Level, Tutorial. IAP/koin/stik dan
+            jaringan tidak disentuh.
+
+            Catatan: presisi klon terverifikasi statis + uji JVM;
+            perilaku runtime persis di perangkat adalah tahap uji di HP.
+          files: PoolBilliardsPro-Mod-v1.apk
