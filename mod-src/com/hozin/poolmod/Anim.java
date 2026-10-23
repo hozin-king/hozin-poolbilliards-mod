@@ -288,8 +288,8 @@ public final class Anim {
      * dengan nilai state tersebut.
      */
     private static void fire(Object scene, Object table, Object rule, Object roundstate) {
-        // GERBANG PvP segar di momen eksekusi
-        if (Ref.invokeB(rule, "isPVPMode")) {
+        // GERBANG PvP satu jalur di momen eksekusi: latch Hooks
+        if (ModState.pvpLatched) {
             cancel();
             return;
         }

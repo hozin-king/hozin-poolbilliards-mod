@@ -42,7 +42,7 @@ public final class AutoTrigger {
     public static final class Input {
         public long nowMs;
         public boolean enabled;     // saklar Auto Play
-        public boolean pvp;         // isPVPMode() segar
+        public boolean pvp;         // status PvP jalur tunggal Hooks (ModState.pvpLatched)
         public boolean busy;        // pencarian berjalan / animasi berjalan / ada tembakan menunggu
         public boolean humanTurn;   // getPlayerType(currentPlayer) == 0
         public int state;           // RoundState.state (1 bidik, 2 bergerak, 3 free ball, 4 selesai)

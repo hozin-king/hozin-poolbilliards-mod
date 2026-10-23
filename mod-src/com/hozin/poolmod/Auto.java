@@ -118,8 +118,9 @@ public final class Auto {
 
     public static void startSearch(Object table, Object rule, Object roundstate,
                                    int state, final boolean fromAuto) {
-        // GERBANG PvP di titik masuk pencarian
-        if (Ref.invokeB(rule, "isPVPMode")) {
+        // GERBANG PvP satu jalur: baca latch Hooks (ModState.pvpLatched),
+        // tanpa panggilan refleksi isPVPMode() sendiri.
+        if (ModState.pvpLatched) {
             return;
         }
         final Snap snap = Snap.capture(table, rule, roundstate);

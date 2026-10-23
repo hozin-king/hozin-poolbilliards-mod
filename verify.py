@@ -8,7 +8,8 @@ Pemeriksaan:
      versionName.
   4. Decompile-balik: kelas mod ada di smali_classes5, hook
      onSceneTick/onActivityResume/onActivityPause tertanam di smali
-     GameScene & Main, dan gerbang isPVPMode dirujuk oleh Hooks & Auto
+     GameScene & Main, dan gerbang PvP SATU JALUR: isPVPMode hanya
+     dirujuk Keamanan, modul lain membaca bool latch pvpLatched
      (bukti statis fitur + gerbang PvP).
 
 Pemakaian: verify.py <apk-final> <apk-asli>
@@ -23,7 +24,7 @@ import tempfile
 import zipfile
 
 MOD_CLASSES = ["Hooks", "ModMenu", "ModState", "Predict", "Auto", "Snap", "Ref", "Sim",
-               "AutoTrigger", "Magnet", "Features"]
+               "AutoTrigger", "Magnet", "Features", "Keamanan"]
 
 
 def run(cmd, **kw):
@@ -86,11 +87,23 @@ def main() -> int:
 
         hooks = open(os.path.join(moddir, "Hooks.smali"), encoding="utf-8").read()
         auto = open(os.path.join(moddir, "Auto.smali"), encoding="utf-8").read()
-        assert "isPVPMode" in hooks, "gerbang PvP tidak ditemukan di Hooks"
-        assert "isPVPMode" in auto, "gerbang PvP tidak ditemukan di Auto"
+        # v1.4.2 SATU JALUR: isPVPMode hanya boleh dirujuk Keamanan
+        # (kelas gerbang); semua modul lain — termasuk Hooks — membaca
+        # bool latch ModState.pvpLatched saja (bukti di smali final).
+        keamanan = open(os.path.join(moddir, "Keamanan.smali"), encoding="utf-8").read()
+        assert "isPVPMode" in keamanan, "gerbang PvP tidak ditemukan di Keamanan"
+        assert "Keamanan" in hooks, "Hooks tidak memanggil Keamanan (jalur tunggal putus)"
+        for other in ("Hooks", "Auto", "Features", "Anim", "ModMenu", "Predict", "Magnet"):
+            body = open(os.path.join(moddir, other + ".smali"), encoding="utf-8").read()
+            assert "isPVPMode" not in body, \
+                f"gerbang PvP bocor keluar jalur tunggal: isPVPMode ada di {other}"
+        for reader in ("Auto", "Features", "Anim"):
+            body = open(os.path.join(moddir, reader + ".smali"), encoding="utf-8").read()
+            assert "pvpLatched" in body, f"pembaca latch PvP hilang di {reader}"
         sim = open(os.path.join(moddir, "Sim.smali"), encoding="utf-8").read()
         assert "BLOCK_HIT_LOST" in sim and "ROLL_K" in sim, "konstanta fisika Sim tidak ditemukan"
-        print("4c. gerbang isPVPMode dirujuk Hooks & Auto; konstanta Sim ada")
+        print("4c. gerbang PvP SATU JALUR: isPVPMode hanya di Keamanan; "
+              "Auto/Features/Anim membaca bool pvpLatched; konstanta Sim ada")
 
         snap = open(os.path.join(moddir, "Snap.smali"), encoding="utf-8").read()
         assert "isAvailableTarget" in snap, "oracle target legal tidak ditemukan di Snap"

@@ -8,9 +8,12 @@ package com.hozin.poolmod;
  *   Main.onPause()        -> Hooks.onActivityPause(this)
  *
  * Semua pekerjaan fitur berjalan di thread game lewat onSceneTick.
- * GERBANG PvP ditegakkan berlapis: latch per instance rule di sini,
- * pemeriksaan isPVPMode() segar di Predict/Auto/eksekusi, dan menu
- * disembunyikan total selama PvP.
+ * GERBANG PvP SATU JALUR (v1.4.2): logika gerbang ada di
+ * Keamanan.java — tick() memanggil Keamanan.perbarui(rule) sekali
+ * per tick, yang men-set bool ModState.pvpLatched dari isPVPMode();
+ * semua modul lain membaca bool itu saja, tanpa refleksi ulang.
+ * tick() sendiri berhenti sebelum fitur apa pun bila bool menyala,
+ * dan menu disembunyikan total selama PvP.
  *
  * Tidak ada satu pun jalur di kelas ini yang boleh melempar keluar —
  * mod tidak boleh menjatuhkan game.
@@ -43,21 +46,16 @@ public final class Hooks {
         TRIGGER.reset();
     }
 
-    /** Gerbang untuk UI: true hanya bila scene hidup & BUKAN PvP. */
+    /**
+     * Gerbang untuk UI: true hanya bila sedang in-game & BUKAN PvP.
+     * Satu jalur: membaca latch hasil tick() — tanpa panggilan
+     * refleksi isPVPMode() kedua dari thread UI. tick() menandai
+     * inGame=false setiap kali scene/rule tidak terbaca, jadi nilai
+     * ini fail-closed selama game belum berjalan.
+     */
     public static boolean gateAllows() {
-        try {
-            Object scene = ModState.sceneRef;
-            if (scene == null) {
-                return false;
-            }
-            Object rule = Ref.get(scene, "rule");
-            if (rule == null) {
-                return false;
-            }
-            return !Ref.invokeB(rule, "isPVPMode");
-        } catch (Throwable t) {
-            return false;
-        }
+        return ModState.inGame && ModState.sceneRef != null
+                && !ModState.pvpLatched;
     }
 
     public static void onSceneTick(Object scene) {
@@ -90,15 +88,10 @@ public final class Hooks {
         ModState.inGame = true;
         ModState.sceneRef = scene;
 
-        // --- gerbang PvP (latch per instance rule) ---
-        boolean pvp = Ref.invokeB(rule, "isPVPMode");
-        if (rule != ModState.ruleRef) {
-            ModState.ruleRef = rule;
-            ModState.pvpLatched = pvp;
-        }
-        if (pvp) {
-            ModState.pvpLatched = true;
-        }
+        // --- gerbang PvP SATU JALUR: Keamanan.perbarui() men-set bool
+        // ModState.pvpLatched dari isPVPMode() — sekali per tick ---
+        ModState.ruleRef = rule;
+        Keamanan.perbarui(rule);
         int state = Ref.getI(roundstate, "state");
         int current = Ref.getI(roundstate, "currentPlayer");
         int ptype = Ref.invokeI(rule, "getPlayerType", SIG_INT, current);
@@ -193,7 +186,7 @@ public final class Hooks {
         AutoTrigger.Input in = new AutoTrigger.Input();
         in.nowMs = System.currentTimeMillis();
         in.enabled = ModState.autoOn;
-        in.pvp = false; // latch PvP sudah menahan kita sebelum titik ini
+        in.pvp = ModState.pvpLatched; // jalur tunggal Hooks (selalu false di titik ini: tick berhenti lebih dulu bila latch menyala)
         in.busy = ModState.autoBusy || ModState.animBusy || Auto.pendingExec != null;
         in.humanTurn = ptype == 0;
         in.state = state;
@@ -207,10 +200,8 @@ public final class Hooks {
         AutoTrigger.Output out = TRIGGER.tick(in);
         ModState.autoStatus = out.status;
         if (out.startSearch) {
-            // GERBANG PvP segar tepat sebelum memicu pencarian
-            if (!Ref.invokeB(rule, "isPVPMode")) {
-                Auto.startSearch(table, rule, roundstate, state, true);
-            }
+            // gerbang PvP = latch jalur tunggal (dicek Auto.startSearch)
+            Auto.startSearch(table, rule, roundstate, state, true);
         }
     }
 
@@ -231,12 +222,8 @@ public final class Hooks {
             }
             return;
         }
-        // GERBANG PvP segar sebelum menghitung apa pun
-        if (Ref.invokeB(rule, "isPVPMode")) {
-            Predict.hideAll();
-            ModState.predictDiag = "prediksi: mati di PvP";
-            return;
-        }
+        // tanpa cek PvP kedua di sini: tick() sudah berhenti di latch
+        // jalur tunggal sebelum memanggil fungsi ini.
         float angle = Ref.invokeF(scene, "getAimAngle");
         float aimStrength = Ref.invokeF(scene, "getAimStrength");
         float minS = Ref.invokeF(rule, "getMinStrength", 200.0f);

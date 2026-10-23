@@ -88,13 +88,13 @@ jobs:
       - name: Verifikasi APK final
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
-        run: python3 verify.py PoolBilliardsPro-Mod-v1.4.1.apk "original/Pool_Billiards_Pro_5.3.apk"
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.4.2.apk "original/Pool_Billiards_Pro_5.3.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: poolbilliards-mod-apk
-          path: PoolBilliardsPro-Mod-v1.4.1.apk
+          path: PoolBilliardsPro-Mod-v1.4.2.apk
 
       - name: Buat GitHub Release (hanya tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -107,8 +107,16 @@ jobs:
             rilis mod sebelumnya (bisa timpa).
 
             Semua fitur mod MATI TOTAL di mode PvP online
-            (isPVPMode() segar, fail-closed); hanya mode offline
+            (gerbang satu jalur: isPVPMode() sekali per tick di Hooks,
+            latch fail-closed); hanya mode offline
             (VS Computer, Time, Arcade, Tutorial).
+
+            v1.4.2 (performa - isi fitur identik v1.4.1):
+            - Gerbang PvP disatukan jadi SATU JALUR berbentuk bool:
+              logika di Keamanan.java, isPVPMode() dibaca sekali per
+              tick lalu men-set bool ModState.pvpLatched yang dibaca
+              semua fitur (dulu sampai 5 panggilan refleksi per tick).
+              Perilaku tidak berubah: PvP tetap mati total.
 
             v1.4.1 (perbaikan UI saja - isi fitur identik v1.4):
             - Saklar menu digambar ulang sendiri sebagai pil ON/OFF
@@ -122,4 +130,4 @@ jobs:
               AutoTrigger), Arcade Stage 8/9/10 (90 level baru
               terverifikasi), break khusus, Anti-Scratch Total,
               Magnet Lubang, Prank VS CPU, menu geser/minimize.
-          files: PoolBilliardsPro-Mod-v1.4.1.apk
+          files: PoolBilliardsPro-Mod-v1.4.2.apk

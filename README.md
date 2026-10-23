@@ -94,9 +94,11 @@ laporan REA internal (mesin Basket, fisika Java murni di `PoolTable`).
 
 Game punya mode PvP online melawan manusia asli (`PVP8Ball`,
 `isPVPMode() = true`). **Semua fitur mod mati total selama PvP**:
-latch per instance rule + pemeriksaan `isPVPMode()` segar di setiap
-titik masuk fitur (prediksi, pencarian, eksekusi, penempatan freeball),
-dan menu disembunyikan. Fitur hanya bekerja di mode offline:
+sejak v1.4.2 gerbangnya SATU JALUR — logika di `Keamanan.java`:
+`isPVPMode()` dibaca sekali per tick, hasilnya bool
+`ModState.pvpLatched` yang dibaca semua titik masuk fitur (prediksi,
+pencarian, eksekusi, penempatan freeball), dan menu disembunyikan.
+Fitur hanya bekerja di mode offline:
 VS Computer, Time, Arcade/Level, Tutorial. IAP/koin/stik dan jaringan
 tidak disentuh sama sekali.
 

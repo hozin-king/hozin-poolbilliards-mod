@@ -2,8 +2,9 @@ package com.hozin.poolmod;
 
 /**
  * Fitur per-frame v1.4 — dipanggil Hooks tiap tick GameScene SESUDAH
- * gerbang PvP latch dan SEBELUM pemicu/prediksi, selalu di belakang
- * pemeriksaan isPVPMode() segar tambahan di sini (fail-closed):
+ * gerbang PvP latch dan SEBELUM pemicu/prediksi. Sejak v1.4.2 gerbang
+ * PvP satu jalur: kelas ini membaca latch Hooks (ModState.pvpLatched)
+ * saja, tanpa panggilan refleksi isPVPMode() sendiri:
  *
  *  B "Anti-Scratch Total" (ModState.antiScratch): penangkapan lubang
  *     bola putih dimatikan oleh patch smali PoolTable (getNextHitTime
@@ -59,8 +60,8 @@ public final class Features {
                 : Math.min(0.05f, Math.max(0.004f, (now - lastTickMs) / 1000.0f));
         lastTickMs = now;
         try {
-            // gerbang segar kedua (di luar latch Hooks)
-            if (Ref.invokeB(rule, "isPVPMode")) {
+            // gerbang PvP satu jalur: latch Hooks (ModState.pvpLatched)
+            if (ModState.pvpLatched) {
                 restoreBlockers();
                 rollActive = false;
                 return;

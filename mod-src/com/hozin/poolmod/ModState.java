@@ -4,9 +4,12 @@ package com.hozin.poolmod;
  * State bersama antara thread game (Hooks, dipanggil dari GameScene.tick)
  * dan thread UI (ModMenu overlay). Semua field volatile.
  *
- * Gerbang PvP: pvpLatched menempel pada instance rule yang sedang aktif;
- * selain latch ini, setiap titik masuk fitur (prediksi, autoplay,
- * freeball) MEMERIKSA rule.isPVPMode() secara langsung lagi.
+ * Gerbang PvP SATU JALUR (v1.4.2): bool pvpLatched di bawah di-set
+ * oleh Keamanan.perbarui() (dipanggil Hooks.tick() sekali per tick;
+ * di sanalah satu-satunya panggilan refleksi rule.isPVPMode()).
+ * Semua titik masuk fitur (prediksi, autoplay, eksekusi, fitur
+ * per-frame, UI) membaca bool ini saja, tanpa refleksi ulang.
+ * Alasannya performa: dulu sampai 5 panggilan refleksi per tick.
  */
 public final class ModState {
     // saklar pengguna (default sesuai spek: prediksi ON, long line ON,
