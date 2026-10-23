@@ -1,0 +1,390 @@
+
+menu_button.png
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+title
+  rotate: false
+  xy: 1, 978
+  size: 680, 45
+  orig: 680, 45
+  offset: 0, 0
+  index: -1
+tableb0
+  rotate: false
+  xy: 1, 720
+  size: 450, 256
+  orig: 450, 256
+  offset: 0, 0
+  index: -1
+tableb1
+  rotate: false
+  xy: 1, 462
+  size: 450, 256
+  orig: 450, 256
+  offset: 0, 0
+  index: -1
+tableb2
+  rotate: false
+  xy: 1, 204
+  size: 450, 256
+  orig: 450, 256
+  offset: 0, 0
+  index: -1
+tablebx
+  rotate: false
+  xy: 1, 138
+  size: 526, 64
+  orig: 526, 64
+  offset: 0, 0
+  index: -1
+tableb3
+  rotate: false
+  xy: 453, 720
+  size: 450, 256
+  orig: 450, 256
+  offset: 0, 0
+  index: -1
+btsingle
+  rotate: false
+  xy: 453, 464
+  size: 222, 254
+  orig: 222, 254
+  offset: 0, 0
+  index: -1
+titlegoogle
+  rotate: false
+  xy: 1, 78
+  size: 313, 58
+  orig: 313, 58
+  offset: 0, 0
+  index: -1
+btratetitle
+  rotate: false
+  xy: 683, 987
+  size: 320, 36
+  orig: 320, 36
+  offset: 0, 0
+  index: -1
+btvs
+  rotate: false
+  xy: 453, 260
+  size: 140, 202
+  orig: 140, 202
+  offset: 0, 0
+  index: -1
+btgame
+  rotate: false
+  xy: 677, 523
+  size: 132, 195
+  orig: 132, 195
+  offset: 0, 0
+  index: -1
+table0
+  rotate: false
+  xy: 905, 783
+  size: 112, 202
+  orig: 112, 202
+  offset: 0, 0
+  index: -1
+table1
+  rotate: false
+  xy: 811, 516
+  size: 112, 202
+  orig: 112, 202
+  offset: 0, 0
+  index: -1
+table2
+  rotate: false
+  xy: 595, 260
+  size: 112, 202
+  orig: 112, 202
+  offset: 0, 0
+  index: -1
+stage_title_stage
+  rotate: false
+  xy: 1, 12
+  size: 195, 64
+  orig: 195, 64
+  offset: 0, 0
+  index: -1
+btinvitations
+  rotate: false
+  xy: 316, 93
+  size: 189, 43
+  orig: 189, 43
+  offset: 0, 0
+  index: -1
+btinvite
+  rotate: false
+  xy: 453, 216
+  size: 188, 42
+  orig: 188, 42
+  offset: 0, 0
+  index: -1
+btarcade
+  rotate: false
+  xy: 529, 35
+  size: 133, 179
+  orig: 133, 179
+  offset: 0, 0
+  index: -1
+table3
+  rotate: false
+  xy: 664, 56
+  size: 112, 202
+  orig: 112, 202
+  offset: 0, 0
+  index: -1
+titlesingle
+  rotate: false
+  xy: 316, 51
+  size: 162, 40
+  orig: 162, 40
+  offset: 0, 0
+  index: -1
+btlogout
+  rotate: false
+  xy: 677, 483
+  size: 131, 38
+  orig: 131, 38
+  offset: 0, 0
+  index: -1
+btsettingx
+  rotate: false
+  xy: 709, 297
+  size: 133, 184
+  orig: 133, 184
+  offset: 0, 0
+  index: -1
+btgoogle
+  rotate: false
+  xy: 844, 339
+  size: 138, 175
+  orig: 138, 175
+  offset: 0, 0
+  index: -1
+button_xmode8ball
+  rotate: false
+  xy: 844, 240
+  size: 168, 97
+  orig: 168, 97
+  offset: 0, 0
+  index: -1
+button_xmode9ball
+  rotate: false
+  xy: 778, 141
+  size: 168, 97
+  orig: 168, 97
+  offset: 0, 0
+  index: -1
+btrateok
+  rotate: false
+  xy: 905, 744
+  size: 104, 37
+  orig: 104, 37
+  offset: 0, 0
+  index: -1
+titletable
+  rotate: false
+  xy: 198, 35
+  size: 92, 41
+  orig: 92, 41
+  offset: 0, 0
+  index: -1
+titlestick
+  rotate: false
+  xy: 778, 90
+  size: 82, 49
+  orig: 82, 49
+  offset: 0, 0
+  index: -1
+stagetitle3
+  rotate: false
+  xy: 480, 29
+  size: 47, 62
+  orig: 47, 62
+  offset: 0, 0
+  index: -1
+titlearcade
+  rotate: false
+  xy: 862, 100
+  size: 90, 39
+  orig: 90, 39
+  offset: 0, 0
+  index: -1
+btreset
+  rotate: false
+  xy: 709, 262
+  size: 83, 33
+  orig: 83, 33
+  offset: 0, 0
+  index: -1
+select_bg
+  rotate: false
+  xy: 948, 182
+  size: 55, 56
+  orig: 55, 56
+  offset: 0, 0
+  index: -1
+titlemode
+  rotate: false
+  xy: 778, 52
+  size: 73, 36
+  orig: 73, 36
+  offset: 0, 0
+  index: -1
+stage_title_level
+  rotate: false
+  xy: 905, 721
+  size: 72, 21
+  orig: 72, 21
+  offset: 0, 0
+  index: -1
+stagetitle6
+  rotate: false
+  xy: 979, 680
+  size: 44, 62
+  orig: 44, 62
+  offset: 0, 0
+  index: -1
+button_back
+  rotate: false
+  xy: 925, 688
+  size: 52, 31
+  orig: 52, 31
+  offset: 0, 0
+  index: -1
+stagetitle1
+  rotate: false
+  xy: 925, 623
+  size: 46, 63
+  orig: 46, 63
+  offset: 0, 0
+  index: -1
+starx
+  rotate: false
+  xy: 973, 631
+  size: 50, 47
+  orig: 50, 47
+  offset: 0, 0
+  index: -1
+stagetitle5
+  rotate: false
+  xy: 925, 561
+  size: 45, 60
+  orig: 45, 60
+  offset: 0, 0
+  index: -1
+btclose
+  rotate: false
+  xy: 794, 250
+  size: 45, 45
+  orig: 45, 45
+  offset: 0, 0
+  index: -1
+pitch_background
+  rotate: false
+  xy: 948, 142
+  size: 38, 38
+  orig: 38, 38
+  offset: 0, 0
+  index: -1
+btnext
+  rotate: false
+  xy: 988, 132
+  size: 35, 48
+  orig: 35, 48
+  offset: 0, 0
+  index: -1
+btratelater
+  rotate: false
+  xy: 198, 14
+  size: 49, 19
+  orig: 49, 19
+  offset: 0, 0
+  index: -1
+btpre
+  rotate: false
+  xy: 292, 1
+  size: 36, 48
+  orig: 36, 48
+  offset: 0, 0
+  index: -1
+btsetting
+  rotate: false
+  xy: 330, 2
+  size: 45, 47
+  orig: 45, 47
+  offset: 0, 0
+  index: -1
+pitchon
+  rotate: false
+  xy: 377, 5
+  size: 45, 44
+  orig: 45, 44
+  offset: 0, 0
+  index: -1
+stagetitle0
+  rotate: false
+  xy: 954, 78
+  size: 24, 62
+  orig: 24, 62
+  offset: 0, 0
+  index: -1
+select_lock
+  rotate: false
+  xy: 980, 74
+  size: 42, 56
+  orig: 42, 56
+  offset: 0, 0
+  index: -1
+star_a
+  rotate: false
+  xy: 925, 529
+  size: 31, 30
+  orig: 31, 30
+  offset: 0, 0
+  index: -1
+star_b
+  rotate: false
+  xy: 424, 19
+  size: 31, 30
+  orig: 31, 30
+  offset: 0, 0
+  index: -1
+stagetitle2
+  rotate: false
+  xy: 972, 558
+  size: 38, 63
+  orig: 38, 63
+  offset: 0, 0
+  index: -1
+stagetitle4
+  rotate: false
+  xy: 862, 36
+  size: 40, 62
+  orig: 40, 62
+  offset: 0, 0
+  index: -1
+stagetitle7
+  rotate: false
+  xy: 662, 0
+  size: 44, 52
+  orig: 44, 52
+  offset: 0, 0
+  index: -1
+stagetitle8
+  rotate: false
+  xy: 706, 0
+  size: 40, 48
+  orig: 40, 48
+  offset: 0, 0
+  index: -1
+stagetitle9
+  rotate: false
+  xy: 902, 0
+  size: 78, 64
+  orig: 78, 64
+  offset: 0, 0
+  index: -1

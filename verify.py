@@ -22,7 +22,8 @@ import sys
 import tempfile
 import zipfile
 
-MOD_CLASSES = ["Hooks", "ModMenu", "ModState", "Predict", "Auto", "Snap", "Ref", "Sim"]
+MOD_CLASSES = ["Hooks", "ModMenu", "ModState", "Predict", "Auto", "Snap", "Ref", "Sim",
+               "AutoTrigger", "Magnet", "Features"]
 
 
 def run(cmd, **kw):
@@ -125,6 +126,58 @@ def main() -> int:
         print("4f. v1.3: Anim (shoot/putFreeball/setAimAngle), tangga expert + "
               "run-out + saringan Arcade (Auto), LevelRule + effect_type (Snap), "
               "pemilih kesulitan (ModMenu), pengaman 3x gagal (ModState) tertanam")
+
+        # --- v1.4 ---
+        trig = open(os.path.join(moddir, "AutoTrigger.smali"), encoding="utf-8").read()
+        assert "PH_WAIT" in trig or "mesin status" in trig or "STABLE" in trig, \
+            "mesin status pemicu v1.4 tidak ditemukan di AutoTrigger"
+        assert "AutoTrigger" in hooks, "Hooks belum memakai AutoTrigger v1.4"
+        ms = open(os.path.join(moddir, "ModState.smali"), encoding="utf-8").read()
+        for f in ("antiScratch", "magnetOn", "prankOn", "autoStatus", "magnetStatus"):
+            assert f in ms, f"field v1.4 hilang dari ModState: {f}"
+        assert "planBreak" in auto and "isBreakPosition" in auto, \
+            "logika break v1.4 tidak ditemukan di Auto"
+        magnet = open(os.path.join(moddir, "Magnet.smali"), encoding="utf-8").read()
+        assert "targets" in magnet, "kelayakan magnet v1.4 tidak ditemukan di Magnet"
+        feats = open(os.path.join(moddir, "Features.smali"), encoding="utf-8").read()
+        assert "prankTick" in feats and "magnetTick" in feats, \
+            "mesin fitur v1.4 tidak ditemukan di Features"
+        for label in ("Anti-Scratch", "Magnet", "Prank"):
+            assert label in mm, f"saklar v1.4 tidak ditemukan di ModMenu: {label}"
+        assert "panelIntent" in mm, "minimize/persistensi panel v1.4 tidak ditemukan di ModMenu"
+        print("4g. v1.4: AutoTrigger dipakai Hooks, planBreak (Auto), Magnet.targets, "
+              "Features (prank/magnet tick), saklar Anti-Scratch/Magnet/Prank + "
+              "panelIntent (ModMenu), field fitur (ModState) tertanam")
+
+        pt = open(os.path.join(out, "smali", "com", "forthblue", "pool", "engine",
+                               "PoolTable.smali"), encoding="utf-8").read()
+        assert "antiScratch" in pt, "penjaga Anti-Scratch tidak tertanam di PoolTable"
+        ls = open(os.path.join(out, "smali", "com", "forthblue", "pool", "scene",
+                               "LevelScene.smali"), encoding="utf-8").read()
+        assert "MAX_TABLE:I = 0xa" in ls, "MAX_TABLE belum 10 di LevelScene"
+        lr = open(os.path.join(out, "smali", "com", "forthblue", "pool", "rules",
+                               "LevelRule.smali"), encoding="utf-8").read()
+        # label payload tidak bertahan decompile-balik; buktinya =
+        # arraycopy perluasan + 10 blok array-data (7 bawaan + 3 baru)
+        # + start_angle ditulis dua kali (asli lalu hasil perluasan)
+        assert "arraycopy" in lr and lr.count(".array-data") >= 10, \
+            "perluasan start_angle tidak tertanam di LevelRule"
+        assert lr.count("sput-object") >= 2 and "start_angle" in lr, \
+            "penulisan ulang start_angle tidak ditemukan di LevelRule"
+        print("4h. v1.4: penjaga Anti-Scratch (PoolTable), MAX_TABLE=10 "
+              "(LevelScene), start_angle 10 baris (LevelRule) tertanam")
+
+    # aset level baru + region judul stage di dalam zip final
+    for stage in (7, 8, 9):
+        name = f"assets/data/level_stage_{stage}.txt"
+        assert name in names, f"aset level hilang dari APK final: {name}"
+        body = z.read(name).decode("utf-8").strip().split("\n")
+        assert len(body) == 30, f"{name}: {len(body)} baris (diharapkan 30)"
+    pack = z.read("assets/menu_button.pack").decode("utf-8")
+    for region in ("stagetitle7", "stagetitle8", "stagetitle9"):
+        assert ("\n" + region + "\n") in ("\n" + pack), f"region {region} hilang dari pack"
+    print("5. aset v1.4: level_stage_7/8/9 masing-masing 30 level + "
+          "region stagetitle7/8/9 ada di APK final")
 
     print("VERIFY OK:", final_apk, os.path.getsize(final_apk), "byte")
     return 0

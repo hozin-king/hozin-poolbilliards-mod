@@ -61,6 +61,7 @@ public final class Auto {
     public static final int LV_SAFETY = 5;
     public static final int LV_BREAKOUT = 6;
     public static final int LV_LAST = 7;
+    public static final int LV_BREAK = 8;
 
     static final Objective GOAL = new Objective();
     static final long MUSTAHIL_BUDGET_MS = 2800L;
@@ -110,6 +111,7 @@ public final class Auto {
             case LV_COMBO: return "Combo";
             case LV_SAFETY: return "Safety";
             case LV_BREAKOUT: return "Breakout";
+            case LV_BREAK: return "Break";
             default: return "Upaya terakhir";
         }
     }
@@ -1830,6 +1832,128 @@ public final class Auto {
     // ----------------------------------------------------------------
     // ORKESTRASI PENCARIAN TEMBAKAN
     // ----------------------------------------------------------------
+    // ---------------------------------------------------------------
+    // Fitur A v1.4 — BREAK SHOT.
+    //
+    // Posisi break dikenali dari state game sendiri: flag
+    // PoolTable.isFirstShoot (snapshot.firstShoot) masih menyala dan
+    // semua bola objek masih di meja membentuk rack (9-ball: 9 bola,
+    // 8-ball: 15 bola). Mode Arcade dikecualikan (level bukan rack).
+    //
+    // Rencana: kekuatan maksimum (atau 94%-nya) membidik titik ghost
+    // tabrakan-penuh ke bola apex (bola rack terdekat ke bola putih),
+    // dengan beberapa offset lateral kecil; kandidat dinilai dari
+    // simulasi klon: bola jatuh x1500 + bola bergeser jauh x25,
+    // scratch = ditolak mutlak. Yang dieksekusi = yang TERBUKTI
+    // membuyarkan rack di simulasi, bukan tembakan asal keras.
+    static boolean isBreakPosition(Snap snap) {
+        if (!snap.firstShoot || snap.arcade || snap.balls == null) {
+            return false;
+        }
+        int avail = 0;
+        for (int i = 0; i < snap.balls.length; i++) {
+            if (i != snap.clickTarget && snap.balls[i].avail) {
+                avail++;
+            }
+        }
+        return avail >= 9;
+    }
+
+    static Shot planBreak(Sim sim, Snap snap) {
+        Sim.Ball cue = snap.balls[snap.clickTarget];
+        int apex = -1;
+        float bd = Float.MAX_VALUE;
+        for (int i = 0; i < snap.balls.length; i++) {
+            if (i == snap.clickTarget || !snap.balls[i].avail) {
+                continue;
+            }
+            float dx = snap.balls[i].x - cue.x;
+            float dy = snap.balls[i].y - cue.y;
+            float d = dx * dx + dy * dy;
+            if (d < bd) {
+                bd = d;
+                apex = i;
+            }
+        }
+        if (apex < 0) {
+            return null;
+        }
+        Sim.Ball ap = snap.balls[apex];
+        float dx = ap.x - cue.x;
+        float dy = ap.y - cue.y;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist < 1.0f) {
+            return null;
+        }
+        float ux = dx / dist;
+        float uy = dy / dist;
+        // titik ghost tabrakan penuh: pusat bola putih berhenti
+        // tepat 2R sebelum pusat apex pada garis yang sama
+        float gx = ap.x - ux * (2.0f * snap.ballRadius);
+        float gy = ap.y - uy * (2.0f * snap.ballRadius);
+        float[] offsets = {0.0f, -10.0f, 10.0f, -20.0f, 20.0f};
+        float[] strengths = {snap.maxStrength, snap.maxStrength * 0.94f};
+
+        Shot best = null;
+        float bestScore = -1.0f;
+        int bestMoved = 0;
+        int bestPotted = 0;
+        for (int oi = 0; oi < offsets.length; oi++) {
+            // offset lateral tegak lurus arah tembak
+            float tx = gx + (-uy) * offsets[oi];
+            float ty = gy + ux * offsets[oi];
+            float ang = (float) Math.toDegrees(Math.atan2(ty - cue.y, tx - cue.x));
+            for (int si = 0; si < strengths.length; si++) {
+                Sim.Result r = sim.simulate(strengths[si], 0.0f, 0.0f, ang, false);
+                if (r.cuePotted) {
+                    continue; // scratch pada break = ditolak mutlak
+                }
+                int potted = 0;
+                int moved = 0;
+                for (int i = 0; i < snap.balls.length; i++) {
+                    if (i == snap.clickTarget || !snap.balls[i].avail) {
+                        continue;
+                    }
+                    if (r.potted[i]) {
+                        potted++;
+                        moved++;
+                        continue;
+                    }
+                    float mx = r.stopX[i] - snap.balls[i].x;
+                    float my = r.stopY[i] - snap.balls[i].y;
+                    if (mx * mx + my * my > 80.0f * 80.0f) {
+                        moved++;
+                    }
+                }
+                float score = potted * 1500.0f + moved * 25.0f
+                        - Math.abs(offsets[oi]) * 0.5f;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMoved = moved;
+                    bestPotted = potted;
+                    Shot s = new Shot();
+                    s.strength = strengths[si];
+                    s.spinX = 0.0f;
+                    s.spinY = 0.0f;
+                    s.angle = ang;
+                    s.score = score;
+                    s.potted = potted;
+                    s.safety = false;
+                    s.targetBall = apex;
+                    s.level = LV_BREAK;
+                    best = s;
+                }
+            }
+        }
+        if (best != null) {
+            setReport(reportHead(snap, ModState.difficulty) + "BREAK: kekuatan "
+                    + (int) best.strength + " ke apex bola " + apex
+                    + " — simulasi: " + bestPotted + " bola jatuh, "
+                    + bestMoved + " bola bergeser jauh");
+        }
+        return best;
+    }
+
     public static Shot searchShot(Snap snap) {
         return searchShot(snap, DIFF_EXPERT, 0L);
     }
@@ -1849,6 +1973,17 @@ public final class Auto {
         }
         Sim sim = snap.newSim();
         boolean[] legal = snap.legal;
+
+        // Fitur A v1.4 — BREAK SHOT khusus: posisi awal rack penuh
+        // ditangani logika break (kekuatan maks, bidik apex), bukan
+        // tangga biasa yang hanya menyenggol rack tanpa memasukkan.
+        if (isBreakPosition(snap)) {
+            Shot brk = planBreak(sim, snap);
+            if (brk != null) {
+                counting = false;
+                return brk;
+            }
+        }
 
         if (diff == DIFF_NORMAL) {
             ArrayList<Cand> cands = genPots(sim, snap, legal, 0);

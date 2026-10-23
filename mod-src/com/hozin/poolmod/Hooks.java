@@ -38,6 +38,11 @@ public final class Hooks {
         }
     }
 
+    /** Reset mesin status pemicu Auto Play (dipanggil menu). */
+    public static void resetAutoTrigger() {
+        TRIGGER.reset();
+    }
+
     /** Gerbang untuk UI: true hanya bila scene hidup & BUKAN PvP. */
     public static boolean gateAllows() {
         try {
@@ -71,12 +76,14 @@ public final class Hooks {
         Object rule = Ref.get(scene, "rule");
         if (table == null || rule == null) {
             ModState.inGame = false;
+            Features.onSceneGone();
             return;
         }
         Object roundstate = Ref.get(table, "roundstate");
         if (roundstate == null) {
             ModState.inGame = false;
             Predict.hideAll();
+            Features.onSceneGone();
             return;
         }
         ModState.lastTickMs = System.currentTimeMillis();
@@ -105,6 +112,7 @@ public final class Hooks {
             ModState.autoOn = false; // saklar Auto Play mati paksa di PvP
             Auto.pendingExec = null;
             Anim.cancel();
+            Features.onSceneGone(); // pulihkan blocker prank bila ada
             return;
         }
 
@@ -131,70 +139,78 @@ public final class Hooks {
             }
         }
 
+        // --- fitur per-frame v1.4 (anti-scratch / magnet / prank) ---
+        Features.tick(scene, table, rule, roundstate, state, ptype);
+
         // --- auto play OTOMATIS (saklar menu, default OFF) ---
-        maybeAutoTrigger(table, rule, roundstate, state, ptype);
+        autoTriggerTick(table, rule, roundstate, state, ptype);
 
         // --- prediksi / long line saat membidik ---
         updatePrediction(scene, table, rule, roundstate, state, ptype);
     }
 
-    /**
-     * Pemicu mode otomatis: hanya pada giliran manusia di mode offline
-     * (gerbang PvP sudah ditegakkan latch + cek segar sebelum titik
-     * ini, dan Auto.startSearch memeriksa isPVPMode() lagi). Meja
-     * harus stabil: pasangan (state, tipe pemain) tidak berubah
-     * >=900 ms, lalu dua probe posisi berjarak >=700 ms harus sama
-     * persis — jadi tembakan pertama keluar ±1,6 detik setelah meja
-     * berhenti, dan tidak pernah saat bola/posisi masih bergerak.
-     * autoHoldKey menahan pemicu untuk posisi yang sama (termasuk
-     * sesudah keputusan "tidak ada tembakan aman"), sehingga mode
-     * otomatis tidak mengulang pencarian tanpa perubahan meja.
-     */
-    private static void maybeAutoTrigger(Object table, Object rule, Object roundstate,
-                                         int state, int ptype) {
-        boolean humanAim = state == 1 && ptype == 0;
-        boolean humanFree = state == 3 && ptype == 0;
-        if (!ModState.autoOn || ModState.autoBusy || ModState.animBusy
-                || Auto.pendingExec != null
-                || !(humanAim || humanFree)) {
-            ModState.autoPair = -1;
-            ModState.autoProbeKey = Long.MIN_VALUE;
-            return;
-        }
-        if (Ref.getI(roundstate, "winner") != -1) {
-            return; // ronde sudah selesai
-        }
-        long now = System.currentTimeMillis();
-        int pair = state * 4 + Ref.getI(roundstate, "currentPlayer");
-        if (pair != ModState.autoPair) {
-            ModState.autoPair = pair;
-            ModState.autoPairSinceMs = now;
-            ModState.autoProbeKey = Long.MIN_VALUE;
-            return;
-        }
-        if (now - ModState.autoPairSinceMs < 900L) {
-            return;
-        }
-        if (ModState.autoProbeKey != Long.MIN_VALUE && now - ModState.autoProbeMs < 700L) {
-            return;
-        }
-        Snap probe = Snap.capture(table, rule, roundstate);
-        if (probe == null) {
-            return;
-        }
-        long key = probe.positionKey() * 31L + state;
-        if (key == ModState.autoProbeKey) {
-            // posisi stabil pada dua probe -> tembak sekarang
-            if (key != ModState.autoHoldKey) {
-                ModState.autoHoldKey = key;
-                // GERBANG PvP segar tepat sebelum memicu pencarian
-                if (!Ref.invokeB(rule, "isPVPMode")) {
-                    Auto.startSearch(table, rule, roundstate, state, true);
-                }
+    // ---------------------------------------------------------------
+    // Pemicu Auto Play v1.4: mesin status eksplisit AutoTrigger
+    // (murni, teruji JVM di TestTrigger). v1.3 memakai pasangan
+    // stabil 900 ms + dua probe Snap penuh berjarak 700 ms + latch
+    // autoHoldKey, TANPA status yang terlihat selagi menunggu dan
+    // tanpa uji host — di perangkat saklar tidak pernah terasa
+    // bekerja. Mesin baru: deteksi giliran eksplisit, meja diam
+    // 700 ms dari kunci posisi ringan (tanpa snapshot penuh),
+    // status tertulis di ModState.autoStatus pada SETIAP fase,
+    // percobaan ulang berjeda bila pencarian tanpa hasil (penghitung
+    // gagal 3x tetap di Auto, dengan alasan di readout).
+    private static final AutoTrigger TRIGGER = new AutoTrigger();
+    private static boolean prevAutoOn = false;
+
+    /** Sidik jari posisi dari bola hidup (rumus sama dengan
+     *  Snap.positionKey, tanpa snapshot penuh/oracle). */
+    static long lightPositionKey(Object table) {
+        try {
+            Object[] ballsArr = (Object[]) Ref.get(table, "balls");
+            if (ballsArr == null) {
+                return Long.MIN_VALUE;
             }
-        } else {
-            ModState.autoProbeKey = key;
-            ModState.autoProbeMs = now;
+            long k = 1125899906842597L;
+            for (int i = 0; i < ballsArr.length; i++) {
+                Object b = ballsArr[i];
+                if (b == null) {
+                    k = k * 31L + 7;
+                    continue;
+                }
+                k = k * 31L + (int) (Ref.getF(b, "x") * 2.0f);
+                k = k * 31L + (int) (Ref.getF(b, "y") * 2.0f);
+                k = k * 31L + (Ref.getB(b, "isAvailable") ? 1 : 0);
+            }
+            return k;
+        } catch (Throwable t) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    private static void autoTriggerTick(Object table, Object rule, Object roundstate,
+                                        int state, int ptype) {
+        AutoTrigger.Input in = new AutoTrigger.Input();
+        in.nowMs = System.currentTimeMillis();
+        in.enabled = ModState.autoOn;
+        in.pvp = false; // latch PvP sudah menahan kita sebelum titik ini
+        in.busy = ModState.autoBusy || ModState.animBusy || Auto.pendingExec != null;
+        in.humanTurn = ptype == 0;
+        in.state = state;
+        in.currentPlayer = Ref.getI(roundstate, "currentPlayer");
+        in.roundOver = Ref.getI(roundstate, "winner") != -1;
+        in.positionKey = lightPositionKey(table);
+        if (in.enabled && !prevAutoOn) {
+            TRIGGER.reset(); // saklar baru dinyalakan: mulai bersih
+        }
+        prevAutoOn = in.enabled;
+        AutoTrigger.Output out = TRIGGER.tick(in);
+        ModState.autoStatus = out.status;
+        if (out.startSearch) {
+            // GERBANG PvP segar tepat sebelum memicu pencarian
+            if (!Ref.invokeB(rule, "isPVPMode")) {
+                Auto.startSearch(table, rule, roundstate, state, true);
+            }
         }
     }
 

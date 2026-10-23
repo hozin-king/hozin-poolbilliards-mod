@@ -15,6 +15,18 @@ public final class ModState {
     public static volatile boolean longLineOn = true;
     public static volatile boolean autoOn = false;
 
+    // saklar fitur v1.4 (SEMUA default OFF, di belakang gerbang PvP
+    // yang sama): B anti-scratch, D magnet lubang, C prank giliran lawan
+    public static volatile boolean antiScratch = false;
+    public static volatile boolean magnetOn = false;
+    public static volatile boolean prankOn = false;
+
+    // status mesin pemicu Auto Play (diisi AutoTrigger lewat Hooks,
+    // ditampilkan ModMenu sebagai baris status Auto) + status magnet
+    // (alasan diam, mis. "grup belum terbaca")
+    public static volatile String autoStatus = "";
+    public static volatile String magnetStatus = "";
+
     // tingkat kesulitan Auto Play (Perintah 6): 0 Normal, 1 Expert
     // (bawaan), 2 Mustahil — mengubah kedalaman pencarian & gaya,
     // tidak pernah mengubah aturan keras legalitas.

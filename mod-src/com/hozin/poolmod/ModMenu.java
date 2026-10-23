@@ -14,6 +14,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,14 +24,16 @@ import java.lang.ref.WeakReference;
 /**
  * Menu melayang mod: jendela WindowManager terpisah bertipe
  * TYPE_APPLICATION_PANEL pada token jendela activity (tanpa izin
- * overlay sistem), di atas permukaan GL game — pola yang sama dengan
- * mod gabung user sebelumnya.
+ * overlay sistem), di atas permukaan GL game.
  *
- * Tombol "MOD" bisa digeser; ketuk membuka panel berisi saklar
- * Long Line / Prediksi Penuh dan tombol AUTO PLAY. Watchdog 300 ms
- * menyembunyikan seluruh menu saat tidak di dalam permainan (tidak ada
- * tick GameScene) dan — mutlak — selama mode PvP (gerbang juga
- * ditegakkan di Hooks/Auto/Predict, menu hanya lapisan UI).
+ * v1.4 (permintaan user): panel bisa DIGESER dari header-nya,
+ * bisa DIMINIMIZE jadi tombol/ball kecil "MOD" (ketuk untuk
+ * membuka lagi), dan posisi panel + tombol + keadaan
+ * tampil/sembunyi DIPERTAHANKAN selama sesi game (field statis
+ * proses; watchdog hanya mencocokkan visibilitas dengan gerbang:
+ * di dalam game & bukan PvP). Di PvP menu hilang TOTAL termasuk
+ * ikonnya (gerbang juga ditegakkan di Hooks/Auto/Predict/Features
+ * — menu hanya lapisan UI).
  */
 public final class ModMenu {
     private static final int ACCENT = Color.rgb(64, 199, 120);
@@ -46,12 +49,17 @@ public final class ModMenu {
     private static LinearLayout panel;
     private static WindowManager.LayoutParams panelLp;
     private static boolean panelAdded;
-    private static boolean panelOpen;
+    /** maksud user: panel ingin tampil (dipertahankan per sesi) */
+    private static boolean panelIntent;
     private static TextView statusView;
     private static TextView diagView;
     private static Switch swAutoState;
     private static Button diffBtn;
     private static boolean watchdogOn;
+
+    private interface BoolSetter {
+        void accept(boolean v);
+    }
 
     static String diffLabel() {
         int d = ModState.difficulty;
@@ -108,6 +116,24 @@ public final class ModMenu {
         return (int) (v * act.getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private static Switch addSwitch(final Activity act, LinearLayout parent,
+                                    String label, boolean initial,
+                                    final BoolSetter setter) {
+        Switch sw = new Switch(act);
+        sw.setText(label);
+        sw.setTextColor(Color.WHITE);
+        sw.setChecked(initial);
+        sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean checked) {
+                setter.accept(checked);
+                savePrefs(act);
+            }
+        });
+        parent.addView(sw);
+        return sw;
+    }
+
     private static void buildIfNeeded(final Activity act) {
         if (btnMod != null) {
             return;
@@ -118,8 +144,11 @@ public final class ModMenu {
         ModState.longLineOn = prefs.getBoolean("longLineOn", true);
         ModState.autoOn = prefs.getBoolean("autoOn", false);
         ModState.difficulty = prefs.getInt("diff", 1);
+        ModState.antiScratch = prefs.getBoolean("antiScratch", false);
+        ModState.magnetOn = prefs.getBoolean("magnetOn", false);
+        ModState.prankOn = prefs.getBoolean("prankOn", false);
 
-        // --- tombol MOD ---
+        // --- tombol MOD (ikon kecil; juga pegangan saat panel minimize) ---
         btnMod = new TextView(act);
         btnMod.setText("MOD");
         btnMod.setTextColor(Color.WHITE);
@@ -138,67 +167,81 @@ public final class ModMenu {
         btnLp.gravity = Gravity.TOP | Gravity.RIGHT;
         btnLp.x = dp(act, 10);
         btnLp.y = dp(act, 110);
-        btnMod.setOnTouchListener(new DragTapListener());
 
         // --- panel ---
         panel = new LinearLayout(act);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(act, 16), dp(act, 14), dp(act, 16), dp(act, 14));
         panel.setBackground(roundBg(PANEL_BG, dp(act, 16), ACCENT));
 
+        // header: seret untuk memindah panel; tombol — untuk minimize
+        LinearLayout header = new LinearLayout(act);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(act, 16), dp(act, 10), dp(act, 8), dp(act, 2));
         TextView title = new TextView(act);
-        title.setText("POOL MOD");
+        title.setText("POOL MOD  ≡");
         title.setTextColor(Color.WHITE);
         title.setTextSize(15.0f);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        panel.addView(title);
+        title.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f));
+        header.addView(title);
+        TextView minBtn = new TextView(act);
+        minBtn.setText(" — ");
+        minBtn.setTextColor(Color.WHITE);
+        minBtn.setTextSize(17.0f);
+        minBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        minBtn.setPadding(dp(act, 10), dp(act, 2), dp(act, 10), dp(act, 2));
+        minBtn.setBackground(roundBg(Color.rgb(35, 55, 70), dp(act, 10), 0));
+        minBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                panelIntent = false;
+                hidePanelView();
+            }
+        });
+        header.addView(minBtn);
+        panel.addView(header);
+
+        LinearLayout content = new LinearLayout(act);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(act, 16), dp(act, 4), dp(act, 16), dp(act, 14));
 
         TextView sub = new TextView(act);
-        sub.setText("Khusus mode offline (VS CPU, Time, Arcade, Tutorial).");
+        sub.setText("Khusus mode offline (VS CPU, Time, Arcade, Tutorial)."
+                + " Seret header untuk memindah panel.");
         sub.setTextColor(Color.rgb(170, 185, 195));
         sub.setTextSize(11.0f);
-        panel.addView(sub);
+        content.addView(sub);
 
         statusView = new TextView(act);
         statusView.setTextColor(Color.rgb(140, 230, 175));
         statusView.setTextSize(12.0f);
         statusView.setPadding(0, dp(act, 8), 0, dp(act, 4));
-        panel.addView(statusView);
+        content.addView(statusView);
 
-        // baris diagnosis: alasan prediksi tidak menggambar + keputusan
-        // autoplay terakhir (grup legal, kandidat, penolakan, pilihan)
+        // baris diagnosis: alasan prediksi tidak menggambar, keputusan
+        // autoplay terakhir, status pemicu Auto, status magnet
         diagView = new TextView(act);
         diagView.setTextColor(Color.rgb(165, 180, 190));
         diagView.setTextSize(10.5f);
         diagView.setPadding(0, 0, 0, dp(act, 4));
-        panel.addView(diagView);
+        content.addView(diagView);
 
-        Switch swPredict = new Switch(act);
-        swPredict.setText("Prediksi penuh");
-        swPredict.setTextColor(Color.WHITE);
-        swPredict.setChecked(ModState.predictOn);
-        swPredict.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton b, boolean checked) {
-                ModState.predictOn = checked;
-                savePrefs(act);
-            }
-        });
-        panel.addView(swPredict);
-
-        Switch swLong = new Switch(act);
-        swLong.setText("Long line");
-        swLong.setTextColor(Color.WHITE);
-        swLong.setChecked(ModState.longLineOn);
-        swLong.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton b, boolean checked) {
-                ModState.longLineOn = checked;
-                savePrefs(act);
-            }
-        });
-        panel.addView(swLong);
-
+        addSwitch(act, content, "Prediksi penuh", ModState.predictOn,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.predictOn = v;
+                    }
+                });
+        addSwitch(act, content, "Long line", ModState.longLineOn,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.longLineOn = v;
+                    }
+                });
         Switch swAuto = new Switch(act);
         swAuto.setText("Auto Play");
         swAutoState = swAuto;
@@ -211,17 +254,42 @@ public final class ModMenu {
                 if (checked) {
                     ModState.autoFailCount = 0;
                 }
-                // posisi meja saat ini tidak boleh langsung ditembak:
-                // lupakan probe & tahan sampai meja berubah/stabil lagi
-                ModState.autoProbeKey = Long.MIN_VALUE;
-                ModState.autoHoldKey = Long.MIN_VALUE;
-                ModState.autoPair = -1;
+                // mesin status pemicu mulai bersih setiap saklar ON
+                Hooks.resetAutoTrigger();
                 savePrefs(act);
             }
         });
-        panel.addView(swAuto);
+        content.addView(swAuto);
 
-        // pemilih kesulitan Auto Play (Perintah 6): ketuk = putar
+        addSwitch(act, content, "Anti-Scratch Total (bola putih kebal lubang)",
+                ModState.antiScratch,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.antiScratch = v;
+                    }
+                });
+        addSwitch(act, content, "Magnet Lubang (bola ngejar lubang)",
+                ModState.magnetOn,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.magnetOn = v;
+                        if (v) {
+                            ModState.magnetStatus = "aktif — menunggu tembakanmu";
+                        }
+                    }
+                });
+        addSwitch(act, content, "Prank: rel mati saat giliran AI (VS CPU)",
+                ModState.prankOn,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.prankOn = v;
+                    }
+                });
+
+        // pemilih kesulitan Auto Play: ketuk = putar
         // Normal -> Expert -> Mustahil; bawaan Expert.
         diffBtn = new Button(act);
         diffBtn.setText(diffLabel());
@@ -239,7 +307,7 @@ public final class ModMenu {
                 savePrefs(act);
             }
         });
-        panel.addView(diffBtn);
+        content.addView(diffBtn);
 
         Button auto = new Button(act);
         auto.setText("AUTO PLAY");
@@ -255,18 +323,22 @@ public final class ModMenu {
                 onAutoPlay(act);
             }
         });
-        panel.addView(auto);
+        content.addView(auto);
 
         TextView note = new TextView(act);
         note.setText("Di mode PvP online semua fitur mod mati total.");
         note.setTextColor(Color.rgb(150, 160, 168));
         note.setTextSize(10.5f);
         note.setPadding(0, dp(act, 8), 0, 0);
-        panel.addView(note);
+        content.addView(note);
+
+        ScrollView scroll = new ScrollView(act);
+        scroll.addView(content);
+        panel.addView(scroll);
 
         panelLp = new WindowManager.LayoutParams(
                 dp(act, 264),
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                dp(act, 330),
                 WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 android.graphics.PixelFormat.TRANSLUCENT);
@@ -274,6 +346,17 @@ public final class ModMenu {
         panelLp.gravity = Gravity.TOP | Gravity.RIGHT;
         panelLp.x = dp(act, 10);
         panelLp.y = dp(act, 160);
+
+        // listener seret: tombol MOD (ketuk = buka/tutup panel),
+        // header panel (seret saja; root jendelanya = panel)
+        btnMod.setOnTouchListener(new DragListener(btnMod, btnLp, new Runnable() {
+            @Override
+            public void run() {
+                panelIntent = !panelIntent;
+                applyPanelVisibility();
+            }
+        }));
+        header.setOnTouchListener(new DragListener(panel, panelLp, null));
     }
 
     private static void savePrefs(Activity act) {
@@ -283,6 +366,9 @@ public final class ModMenu {
                     .putBoolean("longLineOn", ModState.longLineOn)
                     .putBoolean("autoOn", ModState.autoOn)
                     .putInt("diff", ModState.difficulty)
+                    .putBoolean("antiScratch", ModState.antiScratch)
+                    .putBoolean("magnetOn", ModState.magnetOn)
+                    .putBoolean("prankOn", ModState.prankOn)
                     .apply();
         } catch (Throwable ignored) {
         }
@@ -311,12 +397,16 @@ public final class ModMenu {
     }
 
     // ----------------------------------------------------------------
-    private static void showBtnIfWanted() {
+    private static boolean gateWantsMenu() {
         Activity act = actRef == null ? null : actRef.get();
-        boolean want = act != null && !act.isFinishing()
+        return act != null && !act.isFinishing()
                 && ModState.inGame
                 && System.currentTimeMillis() - ModState.lastTickMs < 1200L
                 && !ModState.pvpLatched;
+    }
+
+    private static void showBtnIfWanted() {
+        boolean want = gateWantsMenu();
         if (want && !btnAdded && wm != null && btnMod != null) {
             try {
                 wm.addView(btnMod, btnLp);
@@ -324,37 +414,34 @@ public final class ModMenu {
             } catch (Throwable ignored) {
             }
         } else if (!want && btnAdded) {
-            closePanel();
+            hidePanelView();
             try {
                 wm.removeView(btnMod);
             } catch (Throwable ignored) {
             }
             btnAdded = false;
         }
-        if (panelOpen) {
+        applyPanelVisibility();
+        if (panelAdded) {
             updateStatus();
         }
     }
 
-    private static void togglePanel() {
-        if (panelOpen) {
-            closePanel();
-            return;
-        }
-        Activity act = actRef == null ? null : actRef.get();
-        if (act == null || wm == null || panel == null) {
-            return;
-        }
-        try {
-            wm.addView(panel, panelLp);
-            panelAdded = true;
-            panelOpen = true;
-            updateStatus();
-        } catch (Throwable ignored) {
+    /** Visibilitas panel = maksud user (intent) DAN gerbang sesi. */
+    private static void applyPanelVisibility() {
+        if (panelIntent && gateWantsMenu() && !panelAdded && wm != null && panel != null) {
+            try {
+                wm.addView(panel, panelLp);
+                panelAdded = true;
+                updateStatus();
+            } catch (Throwable ignored) {
+            }
+        } else if ((!panelIntent || !gateWantsMenu()) && panelAdded) {
+            hidePanelView();
         }
     }
 
-    private static void closePanel() {
+    private static void hidePanelView() {
         if (panelAdded && wm != null && panel != null) {
             try {
                 wm.removeView(panel);
@@ -362,11 +449,10 @@ public final class ModMenu {
             }
         }
         panelAdded = false;
-        panelOpen = false;
     }
 
     private static void removeViews() {
-        closePanel();
+        hidePanelView();
         if (btnAdded && wm != null && btnMod != null) {
             try {
                 wm.removeView(btnMod);
@@ -433,6 +519,20 @@ public final class ModMenu {
                 }
                 sb.append(ModState.autoReport);
             }
+            if (ModState.autoOn && ModState.autoStatus != null
+                    && !ModState.autoStatus.isEmpty()) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append("Auto: ").append(ModState.autoStatus);
+            }
+            if (ModState.magnetOn && ModState.magnetStatus != null
+                    && !ModState.magnetStatus.isEmpty()) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
+                }
+                sb.append("Magnet: ").append(ModState.magnetStatus);
+            }
             diagView.setText(sb.toString());
         }
     }
@@ -451,18 +551,33 @@ public final class ModMenu {
         }, 300L);
     }
 
-    /** Seret untuk memindah tombol; ketuk (gerakan kecil) buka/tutup panel. */
-    private static final class DragTapListener implements View.OnTouchListener {
+    /**
+     * Seret untuk memindah jendela (gravitasi TOP|RIGHT: x menyusut
+     * saat jari ke kanan); ketuk (gerakan kecil) menjalankan onTap
+     * bila ada. root = view yang didaftarkan ke WindowManager
+     * (tombol MOD / panel), karena updateViewLayout hanya menerima
+     * view root jendela.
+     */
+    private static final class DragListener implements View.OnTouchListener {
+        private final View root;
+        private final WindowManager.LayoutParams lp;
+        private final Runnable onTap;
         private int startX, startY;
         private float downX, downY;
         private boolean moved;
+
+        DragListener(View root, WindowManager.LayoutParams lp, Runnable onTap) {
+            this.root = root;
+            this.lp = lp;
+            this.onTap = onTap;
+        }
 
         @Override
         public boolean onTouch(View v, MotionEvent e) {
             switch (e.getAction()) {
                 case MotionEvent.ACTION_DOWN:
-                    startX = btnLp.x;
-                    startY = btnLp.y;
+                    startX = lp.x;
+                    startY = lp.y;
                     downX = e.getRawX();
                     downY = e.getRawY();
                     moved = false;
@@ -473,18 +588,18 @@ public final class ModMenu {
                     if (Math.abs(dx) + Math.abs(dy) > 12.0f) {
                         moved = true;
                     }
-                    btnLp.x = Math.max(0, startX - (int) dx);
-                    btnLp.y = Math.max(0, startY + (int) dy);
-                    if (btnAdded && wm != null) {
+                    lp.x = Math.max(0, startX - (int) dx);
+                    lp.y = Math.max(0, startY + (int) dy);
+                    if (wm != null) {
                         try {
-                            wm.updateViewLayout(btnMod, btnLp);
+                            wm.updateViewLayout(root, lp);
                         } catch (Throwable ignored) {
                         }
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    if (!moved) {
-                        togglePanel();
+                    if (!moved && onTap != null) {
+                        onTap.run();
                     }
                     return true;
                 default:

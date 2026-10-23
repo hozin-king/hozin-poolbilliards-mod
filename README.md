@@ -5,6 +5,39 @@ Mod **gabung APK** (tanpa root) untuk **Pool Billiards Pro 5.3**
 APK asli ada di `original/`; hasil bedah lengkapnya dirangkum dari
 laporan REA internal (mesin Basket, fisika Java murni di `PoolTable`).
 
+## v1.4 — dua keluhan uji HP + Stage 8/9/10 + fitur A–D (detail: `BUILD-MOD-v1.4.md`)
+
+1. **Saklar Auto Play persisten ditulis ulang:** pemicu v1.3
+   (pasangan stabil + dua probe Snap penuh + latch posisi, tanpa
+   status terlihat, tanpa uji host) diganti mesin status
+   `AutoTrigger` yang teruji JVM (TestTrigger 18/18): giliran
+   terdeteksi → meja diam 700 ms dari kunci posisi ringan →
+   tembak → coba lagi berjeda bila gagal; status tertulis di
+   menu pada setiap fase; pengaman mati-sendiri 3x gagal tetap
+   ada dengan alasan di readout.
+2. **Arcade "COMING SOON" dibuka:** penyebabnya kartu ke-8
+   LevelScene dikodekan keras ke region `tablebx` (gambar banner
+   COMING SOON itu sendiri) dan tidak ada region `stagetitle7`;
+   sisanya kunci literal 7 di LevelScene/LevelRule. Patch smali
+   membuka 10 stage (+1 kartu teaser): 210 level bawaan bisa
+   dimainkan dari menu normal, DITAMBAH **90 level baru**
+   (Stage 8/9/10 × 30, `mod-assets/data/`) yang setiap levelnya
+   terbukti tamat oleh klon Sim + perencana dengan aturan
+   restTime asli (TestLevels, juga di CI).
+3. **Fitur baru (semua di belakang gerbang PvP yang sama,
+   default OFF kecuali break):** (A) break shot khusus —
+   kekuatan maksimum ke apex, rack terbukti buyar di simulasi;
+   (B) Anti-Scratch Total — patch `PoolTable.getNextHitTime`
+   membuat bola putih tidak pernah tertangkap lubang;
+   (C) Prank VS CPU — rel meja mati selama giliran AI, bola
+   keluar area di-wrap game ke sisi berlawanan; (D) Magnet
+   Lubang — bola grup user sendiri (VS) / semua bola objek
+   (tanpa grup) diarahkan ke lubang; bola lawan, bola 8, dan
+   bola putih tidak pernah; grup tak terbaca = magnet diam +
+   alasan tertulis di menu.
+4. **Menu:** panel bisa digeser dari header, minimize ke ikon
+   MOD, posisi & keadaan panel dipertahankan selama sesi game.
+
 ## v1.2 — perbaikan dua kegagalan uji HP v1.1 (detail: `BUILD-MOD-v1.2.md`)
 
 1. **Prediksi hilang sesudah game selesai — akar terbukti:** pergantian

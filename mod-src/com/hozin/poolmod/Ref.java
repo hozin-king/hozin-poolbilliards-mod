@@ -114,6 +114,22 @@ public final class Ref {
         return v instanceof Boolean && (Boolean) v;
     }
 
+    /** Tulis field objek (mis. PoolBall.inHole -> null). Gagal-aman. */
+    public static void setObj(Object o, String field, Object val) {
+        if (o == null) {
+            return;
+        }
+        Field f = findField(o.getClass(), field);
+        if (f == null) {
+            return;
+        }
+        try {
+            f.set(o, val);
+        } catch (Throwable t) {
+            // abaikan
+        }
+    }
+
     public static void setF(Object o, String field, float val) {
         if (o == null) {
             return;

@@ -125,6 +125,14 @@ public final class Sim {
     public boolean firstShoot;
     public int clickTarget;
 
+    // Fitur B v1.4 (Anti-Scratch): bila true, bola clickTarget tidak
+    // pernah dihitung waktu tabrakannya dengan lubang — cermin persis
+    // patch smali PoolTable.getNextHitTime(PoolBall, PoolHole) yang
+    // mengembalikan MAX_TIME untuk bola putih saat saklar ON (bola
+    // tidak pernah masuk zona lubang, gravitasi lubang tidak pernah
+    // bekerja padanya, ia meluncur melewati mulut lubang).
+    public boolean cueHoleImmune;
+
     private Ball[] proto;   // snapshot asal (tidak dimutasi)
     private Ball[] balls;   // salinan kerja
     public Blocker[] blockers;
@@ -282,6 +290,64 @@ public final class Sim {
         return r;
     }
 
+    /**
+     * Fitur D v1.4: seperti simulate(), tetapi sebelum tiap langkah
+     * fisika 16 ms bola-bola target magnet menerima delta kecepatan
+     * homing dari Magnet.steerDelta — cermin persis yang dilakukan
+     * Features di perangkat satu kali per tick GameScene (sebelum
+     * langkah fisika frame itu). targets==null = tanpa magnet.
+     */
+    public Result simulateMagnet(float strength, float spinX, float spinY, float angleDeg,
+                                   boolean[] targets, boolean record) {
+        for (int i = 0; i < balls.length; i++) {
+            balls[i].copyFrom(proto[i]);
+        }
+        boolean[] wasPotted = new boolean[balls.length];
+        for (int i = 0; i < balls.length; i++) {
+            wasPotted[i] = balls[i].potted;
+        }
+        Result r = new Result(balls.length, record);
+        applyClick(strength, spinX, spinY, angleDeg);
+        if (record) {
+            recordAll(r);
+        }
+        int steps = 0;
+        while (steps < MAX_STEPS) {
+            if (targets != null) {
+                for (int i = 0; i < balls.length; i++) {
+                    if (i < targets.length && targets[i]) {
+                        float[] dv = Magnet.steerDelta(balls[i], holes, STEP);
+                        if (dv != null) {
+                            balls[i].vx += dv[0];
+                            balls[i].vy += dv[1];
+                        }
+                    }
+                }
+            }
+            processRunning(STEP, r);
+            boolean active = frictionStep(STEP);
+            if (record) {
+                recordAll(r);
+            }
+            steps++;
+            if (!active) {
+                break;
+            }
+        }
+        r.steps = steps;
+        for (int i = 0; i < balls.length; i++) {
+            Ball b = balls[i];
+            r.potted[i] = b.potted && !wasPotted[i];
+            r.stopX[i] = b.x;
+            r.stopY[i] = b.y;
+            if (r.potted[i] && r.potHole[i] < 0) {
+                r.potHole[i] = nearestHole(b.x, b.y);
+            }
+        }
+        r.cuePotted = r.potted[clickTarget];
+        return r;
+    }
+
     private int nearestHole(float x, float y) {
         int best = -1;
         float bd = Float.MAX_VALUE;
@@ -420,7 +486,10 @@ public final class Sim {
                 cBLx[i][k] = contact[0];
                 cBLy[i][k] = contact[1];
             }
-            if (bi.inHole >= 0) {
+            if (cueHoleImmune && i == clickTarget) {
+                // Fitur B: waktu tabrakan lubang untuk bola putih
+                // selalu MAX_TIME (tidak pernah masuk zona lubang)
+            } else if (bi.inHole >= 0) {
                 tHole[i][0] = nextHitTimeHole(bi, holes[bi.inHole]);
             } else {
                 for (int h = 0; h < holes.length; h++) {
