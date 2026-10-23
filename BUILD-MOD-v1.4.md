@@ -239,3 +239,15 @@ panel levelnya di menu Arcade, memainkan level baru sampai
 tamat di game asli, patch Anti-Scratch di mesin asli, magnet
 pada laju frame HP (delta per tick dikalibrasi dt), prank +
 wrap di mesin asli, seret/minimize panel di HyperOS.
+
+## v1.4.1
+Perbaikan UI menu saja: baris saklar digambar sendiri sebagai pil
+ON/OFF (hijau ON / abu OFF, ketuk baris atau pil untuk mengubah)
+menggantikan saklar Switch bawaan Android yang tidak tergambar di
+HP user (HyperOS) — di v1.4 baris menu tampil hanya sebagai teks
+dengan label kecil tanpa tombol yang terlihat. Isi fitur sama
+persis dengan v1.4; gerbang PvP, kunci setelan (prefs), dan
+perilaku semua saklar tidak berubah.
+APK build lokal (toolchain identik CI): 16.662.880 byte,
+SHA-256 ee36d9099bd28a57b03cdcc03f2603ea376b4a01690f2c9650b8b00900007438,
+sertifikat sama 8682ff3c... (bisa timpa pasang di atas v1.4).

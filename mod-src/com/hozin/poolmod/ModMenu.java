@@ -12,10 +12,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,6 +32,11 @@ import java.lang.ref.WeakReference;
  * di dalam game & bukan PvP). Di PvP menu hilang TOTAL termasuk
  * ikonnya (gerbang juga ditegakkan di Hooks/Auto/Predict/Features
  * — menu hanya lapisan UI).
+ *
+ * v1.4.1 (perbaikan UI saja): baris saklar digambar sendiri
+ * (label + pil ON/OFF GradientDrawable) karena Switch bawaan
+ * tidak tergambar track/thumb-nya di HP user. Semantik saklar
+ * (kunci prefs, setter, efek samping) tidak berubah.
  */
 public final class ModMenu {
     private static final int ACCENT = Color.rgb(64, 199, 120);
@@ -53,7 +56,7 @@ public final class ModMenu {
     private static boolean panelIntent;
     private static TextView statusView;
     private static TextView diagView;
-    private static Switch swAutoState;
+    private static ToggleRow tgAuto;
     private static Button diffBtn;
     private static boolean watchdogOn;
 
@@ -116,22 +119,76 @@ public final class ModMenu {
         return (int) (v * act.getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private static Switch addSwitch(final Activity act, LinearLayout parent,
-                                    String label, boolean initial,
-                                    final BoolSetter setter) {
-        Switch sw = new Switch(act);
-        sw.setText(label);
-        sw.setTextColor(Color.WHITE);
-        sw.setChecked(initial);
-        sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+    /**
+     * Baris saklar gambar-sendiri (v1.4.1): label di kiri + pil
+     * ON/OFF di kanan yang digambar dengan GradientDrawable.
+     * Switch bawaan Android TIDAK tergambar track/thumb-nya pada
+     * tema game lama ini di HP user (baris saklar tampil seperti
+     * teks biasa, keadaan fitur tak terlihat) — jadi keadaannya
+     * digambar sendiri, pola yang sama dengan tombol Kesulitan /
+     * AUTO PLAY yang terbukti tampil normal.
+     */
+    private static final class ToggleRow {
+        final LinearLayout row;
+        final TextView pill;
+        boolean value;
+
+        ToggleRow(Activity act, String label, boolean initial) {
+            value = initial;
+            row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(act, 5), 0, dp(act, 5));
+            TextView lab = new TextView(act);
+            lab.setText(label);
+            lab.setTextColor(Color.WHITE);
+            lab.setTextSize(14.0f);
+            lab.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f));
+            row.addView(lab);
+            pill = new TextView(act);
+            pill.setGravity(Gravity.CENTER);
+            pill.setTextColor(Color.WHITE);
+            pill.setTextSize(12.0f);
+            pill.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            pill.setLayoutParams(new LinearLayout.LayoutParams(dp(act, 64), dp(act, 28)));
+            row.addView(pill);
+            refresh(act);
+        }
+
+        void refresh(Activity act) {
+            pill.setText(value ? "ON" : "OFF");
+            pill.setBackground(roundBg(
+                    value ? Color.rgb(22, 110, 62) : Color.rgb(58, 66, 72),
+                    dp(act, 14), 0));
+        }
+
+        /** Sinkronkan tampilan dengan keadaan program (tanpa setter). */
+        void sync(Activity act, boolean v) {
+            if (value != v) {
+                value = v;
+                refresh(act);
+            }
+        }
+    }
+
+    private static ToggleRow addToggle(final Activity act, LinearLayout parent,
+                                       String label, boolean initial,
+                                       final BoolSetter setter) {
+        final ToggleRow t = new ToggleRow(act, label, initial);
+        View.OnClickListener flip = new View.OnClickListener() {
             @Override
-            public void onCheckedChanged(CompoundButton b, boolean checked) {
-                setter.accept(checked);
+            public void onClick(View v) {
+                t.value = !t.value;
+                t.refresh(act);
+                setter.accept(t.value);
                 savePrefs(act);
             }
-        });
-        parent.addView(sw);
-        return sw;
+        };
+        t.row.setOnClickListener(flip);
+        t.pill.setOnClickListener(flip);
+        parent.addView(t.row);
+        return t;
     }
 
     private static void buildIfNeeded(final Activity act) {
@@ -228,40 +285,34 @@ public final class ModMenu {
         diagView.setPadding(0, 0, 0, dp(act, 4));
         content.addView(diagView);
 
-        addSwitch(act, content, "Prediksi penuh", ModState.predictOn,
+        addToggle(act, content, "Prediksi penuh", ModState.predictOn,
                 new BoolSetter() {
                     @Override
                     public void accept(boolean v) {
                         ModState.predictOn = v;
                     }
                 });
-        addSwitch(act, content, "Long line", ModState.longLineOn,
+        addToggle(act, content, "Long line", ModState.longLineOn,
                 new BoolSetter() {
                     @Override
                     public void accept(boolean v) {
                         ModState.longLineOn = v;
                     }
                 });
-        Switch swAuto = new Switch(act);
-        swAuto.setText("Auto Play");
-        swAutoState = swAuto;
-        swAuto.setTextColor(Color.WHITE);
-        swAuto.setChecked(ModState.autoOn);
-        swAuto.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton b, boolean checked) {
-                ModState.autoOn = checked;
-                if (checked) {
-                    ModState.autoFailCount = 0;
-                }
-                // mesin status pemicu mulai bersih setiap saklar ON
-                Hooks.resetAutoTrigger();
-                savePrefs(act);
-            }
-        });
-        content.addView(swAuto);
+        tgAuto = addToggle(act, content, "Auto Play", ModState.autoOn,
+                new BoolSetter() {
+                    @Override
+                    public void accept(boolean v) {
+                        ModState.autoOn = v;
+                        if (v) {
+                            ModState.autoFailCount = 0;
+                        }
+                        // mesin status pemicu mulai bersih setiap saklar ON
+                        Hooks.resetAutoTrigger();
+                    }
+                });
 
-        addSwitch(act, content, "Anti-Scratch Total (bola putih kebal lubang)",
+        addToggle(act, content, "Anti-Scratch Total (bola putih kebal lubang)",
                 ModState.antiScratch,
                 new BoolSetter() {
                     @Override
@@ -269,7 +320,7 @@ public final class ModMenu {
                         ModState.antiScratch = v;
                     }
                 });
-        addSwitch(act, content, "Magnet Lubang (bola ngejar lubang)",
+        addToggle(act, content, "Magnet Lubang (bola ngejar lubang)",
                 ModState.magnetOn,
                 new BoolSetter() {
                     @Override
@@ -280,7 +331,7 @@ public final class ModMenu {
                         }
                     }
                 });
-        addSwitch(act, content, "Prank: rel mati saat giliran AI (VS CPU)",
+        addToggle(act, content, "Prank: rel mati saat giliran AI (VS CPU)",
                 ModState.prankOn,
                 new BoolSetter() {
                     @Override
@@ -466,11 +517,14 @@ public final class ModMenu {
         if (statusView == null) {
             return;
         }
-        // sinkronkan saklar Auto Play dengan keadaan sebenarnya —
+        // sinkronkan pil Auto Play dengan keadaan sebenarnya —
         // saklar bisa mati sendiri (3x gagal / masuk PvP) dan itu
         // harus terlihat di menu, bukan diam-diam.
-        if (swAutoState != null && swAutoState.isChecked() != ModState.autoOn) {
-            swAutoState.setChecked(ModState.autoOn);
+        if (tgAuto != null) {
+            Activity act = actRef == null ? null : actRef.get();
+            if (act != null) {
+                tgAuto.sync(act, ModState.autoOn);
+            }
         }
         if (diffBtn != null) {
             diffBtn.setText(diffLabel());

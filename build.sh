@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Build PoolBilliardsPro-Mod-v1.4.apk (mod DIGABUNG ke APK game, tanpa root):
+# Build PoolBilliardsPro-Mod-v1.4.1.apk (mod DIGABUNG ke APK game, tanpa root):
 #   apktool decompile APK asli -> kompilasi kode mod (javac+d8) -> dex jadi
 #   smali lewat APK dummy -> sisipkan sebagai smali_classes5 -> patch smali
 #   (GameScene.tick + Main.onResume/onPause) -> apktool build -> zipalign ->
-#   apksigner (mod.keystore di folder ini).
+#   apksigner (keystore dari env POOL_KEYSTORE; password dari env
+#   POOL_STORE_PASS/POOL_KEY_PASS — CI: GitHub Secrets, lokal: berkas env
+#   di ~/workspace/hozin-pool-keys/, TIDAK ada kredensial tertulis di repo).
 #
 # Prasyarat:
 #   - JDK 17 (java, javac, keytool)
@@ -13,6 +15,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$PWD"
 WORK="$ROOT/work"
+
+# Kredensial signing: dari env bila sudah di-set (CI menyuntik dari GitHub
+# Secrets); kalau belum, coba berkas env lokal di luar repo.
+if [ -z "${POOL_STORE_PASS:-}" ] && [ -f "$HOME/workspace/hozin-pool-keys/pool_signing.env" ]; then
+  set -a; . "$HOME/workspace/hozin-pool-keys/pool_signing.env"; set +a
+fi
 
 if [ -z "${ANDROID_HOME:-}" ]; then
   if [ -d "$HOME/android-sdk" ]; then ANDROID_HOME="$HOME/android-sdk";
@@ -62,10 +70,14 @@ python3 "$ROOT/apply_patches.py" "$WORK/apk"
 echo "== 5. Build + zipalign + sign =="
 java -jar "$APKTOOL" b "$WORK/apk" -o "$WORK/mod-unsigned.apk"
 "$BT/zipalign" -p -f 4 "$WORK/mod-unsigned.apk" "$WORK/mod-aligned.apk"
-"$BT/apksigner" sign --ks "${POOL_KEYSTORE:-$HOME/workspace/hozin-pool-keys/mod.keystore}" --ks-pass "pass:${POOL_STORE_PASS:-}" \
-  --key-pass "pass:${POOL_KEY_PASS:-}" --ks-key-alias "${POOL_KEY_ALIAS:-modkey}" \
-  --out "$ROOT/PoolBilliardsPro-Mod-v1.4.apk" "$WORK/mod-aligned.apk"
-"$BT/apksigner" verify "$ROOT/PoolBilliardsPro-Mod-v1.4.apk"
-"$BT/zipalign" -c 4 "$ROOT/PoolBilliardsPro-Mod-v1.4.apk"
-ls -la "$ROOT/PoolBilliardsPro-Mod-v1.4.apk"
-echo "BUILD OK: $ROOT/PoolBilliardsPro-Mod-v1.4.apk"
+KS="${POOL_KEYSTORE:-$HOME/workspace/hozin-pool-keys/mod.keystore}"
+[ -f "$KS" ] || { echo "keystore tidak ditemukan: $KS (set env POOL_KEYSTORE)" >&2; exit 1; }
+: "${POOL_STORE_PASS:?POOL_STORE_PASS belum di-set (env / GitHub Secrets)}"
+: "${POOL_KEY_PASS:?POOL_KEY_PASS belum di-set (env / GitHub Secrets)}"
+"$BT/apksigner" sign --ks "$KS" --ks-pass "pass:$POOL_STORE_PASS" \
+  --key-pass "pass:$POOL_KEY_PASS" --ks-key-alias "${POOL_KEY_ALIAS:-modkey}" \
+  --out "$ROOT/PoolBilliardsPro-Mod-v1.4.1.apk" "$WORK/mod-aligned.apk"
+"$BT/apksigner" verify "$ROOT/PoolBilliardsPro-Mod-v1.4.1.apk"
+"$BT/zipalign" -c 4 "$ROOT/PoolBilliardsPro-Mod-v1.4.1.apk"
+ls -la "$ROOT/PoolBilliardsPro-Mod-v1.4.1.apk"
+echo "BUILD OK: $ROOT/PoolBilliardsPro-Mod-v1.4.1.apk"

@@ -78,13 +78,13 @@ jobs:
       - name: Verifikasi APK final
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
-        run: python3 verify.py PoolBilliardsPro-Mod-v1.4.apk "original/Pool_Billiards_Pro_5.3.apk"
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.4.1.apk "original/Pool_Billiards_Pro_5.3.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: poolbilliards-mod-apk
-          path: PoolBilliardsPro-Mod-v1.4.apk
+          path: PoolBilliardsPro-Mod-v1.4.1.apk
 
       - name: Buat GitHub Release (hanya tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -100,27 +100,16 @@ jobs:
             (isPVPMode() segar, fail-closed); hanya mode offline
             (VS Computer, Time, Arcade, Tutorial).
 
-            v1.4:
-            - Saklar Auto Play persisten diperbaiki total: mesin status
-              pemicu baru (posisi stabil 700 ms -> tembak, status selalu
-              tertulis di menu, coba lagi otomatis sesudah rencana
-              gagal; pengaman mati-sendiri 3x gagal tetap ada dan
-              alasannya tertulis di readout).
-            - Arcade: kartu "COMING SOON" dibuka — 210 level bawaan
-              bisa dimainkan dari menu normal, DITAMBAH 90 level baru
-              (Stage 8/9/10 x 30) yang SETIAP levelnya terbukti bisa
-              ditamatkan oleh simulasi klon + perencana di host.
-            - Break shot khusus: Auto Play menembak break berkekuatan
-              maksimum ke apex rack (terverifikasi buyar di simulasi).
-            - Saklar "Anti-Scratch Total": bola putih tidak pernah
-              masuk lubang (termasuk berhenti tepat di atas lubang).
-            - Saklar "Magnet Lubang": bola grup user sendiri (VS)
-              atau semua bola objek (mode tanpa grup) diarahkan ke
-              lubang terdekat saat bergulir; bola putih & bola 8 tidak
-              pernah; bola grup lawan tidak pernah; grup belum terbaca
-              = magnet diam (fail-closed, alasan tertulis di menu).
-            - Saklar Prank (VS CPU): rel meja mati selama giliran AI;
-              bola yang keluar area di-wrap game ke sisi berlawanan.
-            - Menu: bisa digeser dari header, tombol minimize ke ikon
-              MOD, posisi & keadaan panel dipertahankan selama sesi.
-          files: PoolBilliardsPro-Mod-v1.4.apk
+            v1.4.1 (perbaikan UI saja - isi fitur identik v1.4):
+            - Saklar menu digambar ulang sendiri sebagai pil ON/OFF
+              (hijau ON / abu OFF; ketuk baris atau pil untuk
+              mengubah): saklar Switch bawaan Android tidak tergambar
+              di HP user (HyperOS) sehingga baris menu v1.4 tampil
+              tanpa tombol yang terlihat. Semua saklar kini terlihat
+              jelas; fungsi, penyimpanan setelan, dan gerbang PvP
+              tidak berubah.
+            - v1.4: saklar Auto Play persisten (mesin status
+              AutoTrigger), Arcade Stage 8/9/10 (90 level baru
+              terverifikasi), break khusus, Anti-Scratch Total,
+              Magnet Lubang, Prank VS CPU, menu geser/minimize.
+          files: PoolBilliardsPro-Mod-v1.4.1.apk
