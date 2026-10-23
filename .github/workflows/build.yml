@@ -70,9 +70,19 @@ jobs:
           java -cp /tmp/simtest com.hozin.poolmod.TestBreak
           java -cp /tmp/simtest com.hozin.poolmod.TestLevels mod-assets/data
 
+      - name: Siapkan keystore signing (dari Secrets, di luar tree repo)
+        env:
+          POOL_KEYSTORE_BASE64: ${{ secrets.POOL_KEYSTORE_BASE64 }}
+        run: |
+          echo "$POOL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mod.keystore"
+          echo "POOL_KEYSTORE=$RUNNER_TEMP/mod.keystore" >> "$GITHUB_ENV"
+
       - name: Build APK mod (gabung)
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
+          POOL_STORE_PASS: ${{ secrets.POOL_STORE_PASS }}
+          POOL_KEY_ALIAS: ${{ secrets.POOL_KEY_ALIAS }}
+          POOL_KEY_PASS: ${{ secrets.POOL_KEY_PASS }}
         run: bash build.sh
 
       - name: Verifikasi APK final
