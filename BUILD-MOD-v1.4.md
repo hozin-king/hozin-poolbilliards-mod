@@ -4,23 +4,33 @@ Tanggal: 23 Okt 2026. Melanjutkan v1.3 dari DUA KELUHAN NYATA uji HP
 user (23 Okt 20:14–20:15 WIB) + koreksi & ekspansi user (20:17,
 20:21, 20:22, 20:24, 20:25 WIB).
 
-- Commit kode: `5f6af99` (remote `de14e2f`), tag `v1.4`
-- CI: run `39984360660` GAGAL DALAM 4 DETIK TANPA STEP (attempt 1
-  dan re-run attempt 2 sama) — kuota GitHub Actions repo privat
-  bulan Oktober HABIS (reset 1 Nov 2026), BUKAN kegagalan kode:
-  workflow identik strukturnya dengan v1.3 yang hijau, dan semua
-  tahap CI direplikasi lokal dengan toolchain yang sama persis
-  (JDK 17 Temurin, apktool 2.10.0, build-tools 34.0.0): seluruh
-  uji JVM hijau + `build.sh` BUILD OK + `verify.py` VERIFY OK.
-  Repo TIDAK bisa diflip publik untuk mengakali kuota:
-  `mod.keystore` ter-commit di repo + riwayatnya — flip publik
-  membocorkan kunci tanda tangan permanen. Begitu kuota pulih,
-  re-run run tag v1.4 akan menghijaukan CI dan langkah rilis
-  workflow melampirkan asetnya otomatis.
+- Commit kode: `b4d02de2` (hasil tulis-ulang riwayat 23 Okt 2026
+  dari `de14e2f`; lokal `5f6af99`), tag `v1.4`
+- CI: HIJAU — run `39989712681` attempt 2 (tag `v1.4`) SUCCESS:
+  seluruh uji JVM + build + `verify.py` hijau di runner.
+  Jalan menuju hijau: run awal `39984360660` gugur dalam 4 detik
+  tanpa step karena kuota Actions repo privat Oktober habis
+  (BUKAN kegagalan kode — semua tahap CI sudah direplikasi lokal
+  dengan toolchain identik: JDK 17 Temurin, apktool 2.10.0,
+  build-tools 34.0.0, semua hijau). Repo lalu DIRESTRUKTUR atas
+  perintah user (23 Okt 2026): `mod.keystore` dipindah ke GitHub
+  Secrets (`POOL_KEYSTORE_BASE64`, `POOL_STORE_PASS`,
+  `POOL_KEY_ALIAS`, `POOL_KEY_PASS`), build.sh membaca kredensial
+  dari env, dan SELURUH riwayat ditulis ulang (replay 9 commit,
+  urutan+pesan dipertahankan; tree lama minus keystore, literal
+  password di build.sh diganti referensi env) sampai tidak ada
+  ref yang menunjuk tree berisi keystore — terverifikasi via API
+  untuk main + tag v1–v1.4. Repo diflip publik hanya selama
+  jendela CI, lalu kembali privat (terverifikasi 2×). Sertifikat
+  TIDAK diganti: keystore yang sama, APK CI tetap `8682ff3c…`.
+  Backup pra-restruktur: `~/workspace/hozin-poolbilliards-mod-backup-20261023/`
+  + keystore di `~/workspace/hozin-pool-keys/`.
 - Release: https://github.com/hozin-king/hozin-poolbilliards-mod/releases/tag/v1.4
-  (id 422049964, dibuat via API dengan catatan kuota; aset APK
-  menyusul lewat CI — unggah aset langsung dari VM ditolak 401
-  oleh uploads.github.com, batas surrogate yang sudah dikenal)
+  (id 422049964; aset APK SUDAH dilampirkan CI dari dalam
+  workflow: `PoolBilliardsPro-Mod-v1.4.apk`, 16.662.880 byte,
+  SHA-256 `330dc1cf9bf15d01666cd36f5d8a89a75eb253e2a9e298fc0c769dd53d0eefd6`
+  — beda dari build lokal karena build tidak bit-reproducible;
+  sertifikat APK CI terverifikasi `8682ff3c…` via apksigner)
 - APK terkirim (build lokal terverifikasi penuh): 16.761.184 byte,
   SHA-256 `2b88a5892e20cf28685d32910e04f8625974a0767ad074649979e377906b8d96`
 - Sertifikat SHA-256 `8682ff3cf4825833e87cb8b178ab07e5e21d65096b64a944cbadc57b2137f2db`
@@ -217,11 +227,10 @@ TestAntiScratch 30/30, TestMagnet 11/11, TestPrank 6/6,
 TestBreak 9/9, TestLevels 90 level (21.221 pemeriksaan).
 Build lokal toolchain-identik-CI: BUILD OK + VERIFY OK penuh
 (termasuk semua penanda v1.4 poin 4g/4h + aset poin 5).
-CI Actions terblokir kuota privat Oktober (lihat header) —
-satu-satunya mata rantai disiplin yang tertunda, murni faktor
-eksternal; halaman Release v1.4 sudah dibuat via API dengan
-catatan terbuka, asetnya dilampirkan CI sesudah kuota pulih.
-Repo tetap privat (terverifikasi via API).
+CI Actions HIJAU (lihat header): restruktur keystore → Secrets
++ tulis-ulang riwayat membuka rute flip-publik-aman, dan aset
+Release v1.4 sudah dilampirkan CI. Repo kembali privat
+(terverifikasi via API 2×).
 
 ## Yang masih menunggu uji HP
 Koneksi semua fitur di perangkat nyata: pemicu Auto Play pada
