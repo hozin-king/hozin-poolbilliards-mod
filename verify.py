@@ -167,30 +167,31 @@ def main() -> int:
         assert "antiScratch" in pt, "penjaga Anti-Scratch tidak tertanam di PoolTable"
         ls = open(os.path.join(out, "smali", "com", "forthblue", "pool", "scene",
                                "LevelScene.smali"), encoding="utf-8").read()
-        assert "MAX_TABLE:I = 0xa" in ls, "MAX_TABLE belum 10 di LevelScene"
+        assert "MAX_TABLE:I = 0xf" in ls, "MAX_TABLE belum 15 di LevelScene"
         lr = open(os.path.join(out, "smali", "com", "forthblue", "pool", "rules",
                                "LevelRule.smali"), encoding="utf-8").read()
         # label payload tidak bertahan decompile-balik; buktinya =
-        # arraycopy perluasan + 10 blok array-data (7 bawaan + 3 baru)
+        # arraycopy perluasan + 15 blok array-data (7 bawaan + 8 baru)
         # + start_angle ditulis dua kali (asli lalu hasil perluasan)
-        assert "arraycopy" in lr and lr.count(".array-data") >= 10, \
+        assert "arraycopy" in lr and lr.count(".array-data") >= 15, \
             "perluasan start_angle tidak tertanam di LevelRule"
         assert lr.count("sput-object") >= 2 and "start_angle" in lr, \
             "penulisan ulang start_angle tidak ditemukan di LevelRule"
-        print("4h. v1.4: penjaga Anti-Scratch (PoolTable), MAX_TABLE=10 "
-              "(LevelScene), start_angle 10 baris (LevelRule) tertanam")
+        print("4h. v1.5: penjaga Anti-Scratch (PoolTable), MAX_TABLE=15 "
+              "(LevelScene), start_angle 15 baris (LevelRule) tertanam")
 
     # aset level baru + region judul stage di dalam zip final
-    for stage in (7, 8, 9):
+    for stage in range(7, 15):
         name = f"assets/data/level_stage_{stage}.txt"
         assert name in names, f"aset level hilang dari APK final: {name}"
         body = z.read(name).decode("utf-8").strip().split("\n")
         assert len(body) == 30, f"{name}: {len(body)} baris (diharapkan 30)"
     pack = z.read("assets/menu_button.pack").decode("utf-8")
-    for region in ("stagetitle7", "stagetitle8", "stagetitle9"):
+    for region in ("stagetitle7", "stagetitle8", "stagetitle9", "stagetitle10",
+                   "stagetitle11", "stagetitle12", "stagetitle13", "stagetitle14"):
         assert ("\n" + region + "\n") in ("\n" + pack), f"region {region} hilang dari pack"
-    print("5. aset v1.4: level_stage_7/8/9 masing-masing 30 level + "
-          "region stagetitle7/8/9 ada di APK final")
+    print("5. aset v1.5: level_stage_7..14 masing-masing 30 level + "
+          "region stagetitle7..14 ada di APK final")
 
     print("VERIFY OK:", final_apk, os.path.getsize(final_apk), "byte")
     return 0

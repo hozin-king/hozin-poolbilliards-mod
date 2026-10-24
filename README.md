@@ -5,6 +5,24 @@ Mod **gabung APK** (tanpa root) untuk **Pool Billiards Pro 5.3**
 APK asli ada di `original/`; hasil bedah lengkapnya dirangkum dari
 laporan REA internal (mesin Basket, fisika Java murni di `PoolTable`).
 
+## v1.5.0 — Arcade 15 stage: Stage 11–15 baru (detail: `BUILD-MOD-v1.5.0.md`)
+
+Perintah user (24 Okt 2026): "tambahin lagi stage sampe 15".
+Isi fitur & gerbang PvP identik v1.4.2; yang berubah hanya konten
+Arcade: **150 level baru** (Stage 11/12/13/14/15 × 30,
+`mod-assets/data/level_stage_10..14.txt`) dengan generator +
+verifikator yang sama (setiap level terbukti tamat oleh klon Sim +
+perencana, TestLevels di CI — total level buatan mod kini 240).
+Patch smali: MAX_TABLE LevelScene 10→15 (+1 kartu teaser),
+start_angle LevelRule diperluas ke 15 baris
+(`start_angle_rows.txt` 8 baris), judul "11"–"15" digambar ke
+atlas menu_button (region `stagetitle10..14`,
+`tools_make_atlas_v150.py`).
+Catatan gerbang PvP: HEAD sempat berisi edit pasca-rilis v1.4.2
+yang membuat latch PvP selalu false (gerbang tidak pernah aktif);
+v1.5.0 mengembalikan `Keamanan.java` persis ke versi rilis v1.4.2
+— PvP tetap mati total (detail: `BUILD-MOD-v1.5.0.md`).
+
 ## v1.4 — dua keluhan uji HP + Stage 8/9/10 + fitur A–D (detail: `BUILD-MOD-v1.4.md`)
 
 1. **Saklar Auto Play persisten ditulis ulang:** pemicu v1.3

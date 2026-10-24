@@ -7,7 +7,7 @@ import java.nio.file.Paths;
 import java.util.List;
 
 /**
- * Verifikasi independen 90 level baru dari BERKAS FINAL di
+ * Verifikasi independen 240 level baru dari BERKAS FINAL di
  * mod-assets/data (bukan dari generator): struktur baris sah
  * (rumus jumlah int, jarak bola, rentang koordinat ala bawaan)
  * dan setiap level terbukti TAMAT oleh klon Sim + perencana
@@ -26,7 +26,7 @@ public final class TestLevels {
     public static void main(String[] args) throws Exception {
         Path dir = Paths.get(args.length > 0 ? args[0] : "mod-assets/data");
         int totalLevels = 0;
-        for (int stage = 7; stage <= 9; stage++) {
+        for (int stage = 7; stage <= 14; stage++) {
             Path f = dir.resolve("level_stage_" + stage + ".txt");
             List<String> lines = Files.readAllLines(f, StandardCharsets.UTF_8);
             check(lines.size() == 30, f.getFileName() + ": tepat 30 level");
@@ -64,7 +64,7 @@ public final class TestLevels {
                 totalLevels++;
             }
         }
-        check(totalLevels == 90, "total 90 level baru");
-        System.out.println("TestLevels: SEMUA " + checks + " pemeriksaan lulus (90 level)");
+        check(totalLevels == 240, "total 240 level baru");
+        System.out.println("TestLevels: SEMUA " + checks + " pemeriksaan lulus (240 level)");
     }
 }

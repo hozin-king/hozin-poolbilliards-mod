@@ -37,7 +37,7 @@ public final class Keamanan {
             ModState.pvpLatched = pvp;
         }
         if (pvp) {
-            ModState.pvpLatched = false;
+            ModState.pvpLatched = true;
         }
         return ModState.pvpLatched;
     }

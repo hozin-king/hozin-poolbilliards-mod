@@ -11,8 +11,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Generator + verifikator level Arcade baru (Stage 8/9/10 =
- * level_stage_7/8/9.txt) untuk Pool Mod v1.4.
+ * Generator + verifikator level Arcade baru (Stage 8-15 =
+ * level_stage_7..14.txt) untuk Pool Mod v1.4/v1.5.0.
  *
  * Setiap kandidat layout diverifikasi BISA TAMAT oleh klon Sim +
  * perencana Auto yang sama dengan yang dipakai Auto Play di HP
@@ -291,6 +291,83 @@ public final class GenLevels {
         return sb.toString();
     }
 
+    /** Pra-filter murah (v1.5.0): adakah POT LANGSUNG dari posisi
+     *  awal? Geometri murni (tanpa simulasi): untuk satu bola
+     *  objek + satu lubang normal, titik hantu (ghost ball) 2R di
+     *  belakang bola pada garis bola->lubang; segmen putih->hantu
+     *  dan segmen bola->lubang harus bersih dari bola lain
+     *  (jarak > 96). Kandidat yang lolos filter ini hampir pasti
+     *  dibuka perencana dengan pot langsung — bukan jalur
+     *  bank/kick yang membuat satu verifyLevel makan puluhan
+     *  menit. Filter ini HANYA mempercepat sampling generator;
+     *  penerimaan level tetap diputuskan verifyLevel penuh
+     *  (DIFF_EXPERT) di bawah, dan TestLevels memverifikasi
+     *  ulang semua level dari berkas final. */
+    static boolean segClear(float x0, float y0, float x1, float y1,
+                            int[] v, int bhc, int skipA, int skipB) {
+        int bc = v[0];
+        float vx = x1 - x0;
+        float vy = y1 - y0;
+        float len2 = vx * vx + vy * vy;
+        for (int j = 0; j < bc; j++) {
+            if (j == skipA || j == skipB) {
+                continue;
+            }
+            float px = v[2 + bhc + j * 3 + 1];
+            float py = v[2 + bhc + j * 3 + 2];
+            float t = len2 == 0 ? 0 : ((px - x0) * vx + (py - y0) * vy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            float qx = x0 + t * vx;
+            float qy = y0 + t * vy;
+            float ddx = px - qx;
+            float ddy = py - qy;
+            if (ddx * ddx + ddy * ddy < 96f * 96f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean hasInitialPot(int[] v) {
+        int bc = v[0];
+        int bhc = v[1];
+        boolean[] black = new boolean[6];
+        for (int k = 0; k < bhc; k++) {
+            black[v[2 + k]] = true;
+        }
+        float cx = v[2 + bhc + 1];
+        float cy = v[2 + bhc + 2];
+        for (int i = 1; i < bc; i++) {
+            float bx = v[2 + bhc + i * 3 + 1];
+            float by = v[2 + bhc + i * 3 + 2];
+            for (int h = 0; h < 6; h++) {
+                if (black[h]) {
+                    continue;
+                }
+                float hx = TestSim.HOLES[h * 3];
+                float hy = TestSim.HOLES[h * 3 + 1];
+                float dx = hx - bx;
+                float dy = hy - by;
+                float d = (float) Math.sqrt(dx * dx + dy * dy);
+                if (d < 1) {
+                    continue;
+                }
+                float ux = dx / d;
+                float uy = dy / d;
+                float gx = bx - ux * 2 * TestSim.R;
+                float gy = by - uy * 2 * TestSim.R;
+                if (!segClear(cx, cy, gx, gy, v, bhc, 0, i)) {
+                    continue;
+                }
+                if (!segClear(bx, by, hx, hy, v, bhc, -1, i)) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Nilai start_angle[stage][level] kasar dari arah bola objek
      *  terdekat dari posisi awal bola putih (kuadran 0..3). */
     static int startAngleOf(int[] v) {
@@ -336,13 +413,15 @@ public final class GenLevels {
         // baris start_angle + laporan ditulis ke berkas fragmen
         // per-stage dan digabung di akhir.
         final int onlyStage = args.length > 1 ? Integer.parseInt(args[1]) : -1;
-        // stage file index 7,8,9 = Stage 8,9,10
-        int[][] ballRange = {{16, 20}, {19, 23}, {22, 25}};
-        int[][] blackRange = {{0, 2}, {1, 3}, {2, 3}};
+        // stage file index 7..14 = Stage 8..15 (v1.5.0: +Stage 11-15)
+        int[][] ballRange = {{16, 20}, {19, 23}, {22, 25}, {21, 23},
+                {20, 22}, {21, 23}, {20, 22}, {20, 22}};
+        int[][] blackRange = {{0, 2}, {1, 3}, {2, 3}, {2, 2},
+                {2, 2}, {2, 2}, {2, 2}, {2, 2}};
         int[] texPool = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
         StringBuilder report = new StringBuilder();
         List<int[]> allRows = new ArrayList<int[]>();
-        for (int st = 0; st < 3; st++) {
+        for (int st = 0; st < 8; st++) {
             int fileStage = 7 + st;
             if (onlyStage >= 0 && fileStage != onlyStage) {
                 continue;
@@ -385,6 +464,9 @@ public final class GenLevels {
                     }
                     int[] cand = genCandidate(rnd, tryBc, tryBhc, texPool);
                     if (cand == null) {
+                        continue;
+                    }
+                    if (!hasInitialPot(cand)) {
                         continue;
                     }
                     int[] st2 = new int[3];
@@ -432,6 +514,6 @@ public final class GenLevels {
         String prev = Files.exists(reportPath)
                 ? new String(Files.readAllBytes(reportPath), StandardCharsets.UTF_8) : "";
         Files.write(reportPath, (prev + report.toString()).getBytes(StandardCharsets.UTF_8));
-        System.out.println("GenLevels: 90 level terverifikasi ditulis ke " + outDir);
+        System.out.println("GenLevels: level terverifikasi ditulis ke " + outDir);
     }
 }

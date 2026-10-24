@@ -136,38 +136,38 @@ def main() -> int:
     open(path, "w", encoding="utf-8").write(smali)
     print("PoolTable.getNextHitTime(ball,hole): penjaga Anti-Scratch disisipkan")
 
-    # --- LevelScene: 7 stage -> 10 stage (+1 kartu teaser) ---
+    # --- LevelScene: 7 stage -> 15 stage (+1 kartu teaser) ---
     path = find_smali(root, "com/forthblue/pool/scene/LevelScene.smali")
     smali = open(path, encoding="utf-8").read()
     assert smali.count(".field public static final MAX_TABLE:I = 0x7") == 1
     smali = smali.replace(".field public static final MAX_TABLE:I = 0x7",
-                          ".field public static final MAX_TABLE:I = 0xa")
-    # konstruktor: dimensi skor [7][30]->[10][30] + sentinel tablebx
-    # 7->10; kapasitas ScrollHContainer & batas loop kartu 8->11;
-    # batas gulir 6000->9000 (11 kartu x 800)
+                          ".field public static final MAX_TABLE:I = 0xf")
+    # konstruktor: dimensi skor [7][30]->[15][30] + sentinel tablebx
+    # 7->15; kapasitas ScrollHContainer & batas loop kartu 8->16;
+    # batas gulir 6000->13000 (16 kartu x 800 + slack)
     smali = patch_in_method(smali, "constructor <init>(Lcom/forthblue/pool/Main;)V",
-                            "const/4 v11, 0x7", "const/16 v11, 0xa", 2)
+                            "const/4 v11, 0x7", "const/16 v11, 0xf", 2)
     smali = patch_in_method(smali, "constructor <init>(Lcom/forthblue/pool/Main;)V",
-                            "const/16 v1, 0x8", "const/16 v1, 0xb", 2)
+                            "const/16 v1, 0x8", "const/16 v1, 0x10", 2)
     smali = patch_in_method(smali, "constructor <init>(Lcom/forthblue/pool/Main;)V",
-                            "0x45bb8000", "0x460ca000", 1)
+                            "0x45bb8000", "0x464b2000", 1)
     smali = patch_in_method(smali, "initLevelPanel(I)V",
-                            "const/4 v0, 0x7", "const/16 v0, 0xa", 1)
+                            "const/4 v0, 0x7", "const/16 v0, 0xf", 1)
     smali = patch_in_method(smali, "initTable()V",
-                            "const/4 v2, 0x7", "const/16 v2, 0xa", 1)
+                            "const/4 v2, 0x7", "const/16 v2, 0xf", 1)
     smali = patch_in_method(smali, "loadPreference()V",
-                            "const/4 v3, 0x7", "const/16 v3, 0xa", 1)
+                            "const/4 v3, 0x7", "const/16 v3, 0xf", 1)
     smali = patch_in_method(smali, "onButtonClick(I)V",
-                            "const/16 v1, 0x11", "const/16 v1, 0x14", 1)
+                            "const/16 v1, 0x11", "const/16 v1, 0x19", 1)
     smali = patch_in_method(smali, "pageIndexChange(Lcom/forthblue/pool/scene/ScrollHContainer;I)V",
-                            "const/4 p1, 0x7", "const/16 p1, 0xa", 1)
+                            "const/4 p1, 0x7", "const/16 p1, 0xf", 1)
     open(path, "w", encoding="utf-8").write(smali)
-    print("LevelScene: gerbang 7 stage dibuka ke 10 stage + teaser")
+    print("LevelScene: gerbang 7 stage dibuka ke 15 stage + teaser")
 
-    # --- LevelRule.<clinit>: start_angle 7 -> 10 baris ---
+    # --- LevelRule.<clinit>: start_angle 7 -> 15 baris ---
     rows_path = os.path.join(REPO, "mod-assets", "start_angle_rows.txt")
     rows = [ln.split() for ln in open(rows_path, encoding="utf-8").read().strip().split("\n")]
-    assert len(rows) == 3 and all(len(r) == 30 for r in rows), "start_angle_rows harus 3x30"
+    assert len(rows) == 8 and all(len(r) == 30 for r in rows), "start_angle_rows harus 8x30"
     assert all(v in ("0", "1", "2", "3") for r in rows for v in r), "start_angle harus 0..3"
     path = find_smali(root, "com/forthblue/pool/rules/LevelRule.smali")
     smali = open(path, encoding="utf-8").read()
@@ -176,51 +176,43 @@ def main() -> int:
     anchor = ("    sput-object v7, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I\n"
               "\n    return-void")
     assert body.count(anchor) == 1, "LevelRule clinit: jangkar sput tidak unik"
-    ext = """    sput-object v7, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I
-
-    const/16 v3, 0xa
-
-    new-array v3, v3, [[I
-
-    sget-object v1, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I
-
-    const/4 v2, 0x0
-
-    const/4 v4, 0x0
-
-    const/4 v5, 0x7
-
-    invoke-static/range {v1 .. v5}, Ljava/lang/System;->arraycopy(Ljava/lang/Object;ILjava/lang/Object;II)V
-
-    const/16 v1, 0x1e
-
-    new-array v2, v1, [I
-
-    fill-array-data v2, :mod_array_7
-
-    const/4 v4, 0x7
-
-    aput-object v2, v3, v4
-
-    new-array v2, v1, [I
-
-    fill-array-data v2, :mod_array_8
-
-    const/16 v4, 0x8
-
-    aput-object v2, v3, v4
-
-    new-array v2, v1, [I
-
-    fill-array-data v2, :mod_array_9
-
-    const/16 v4, 0x9
-
-    aput-object v2, v3, v4
-
-    sput-object v3, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I
-
-    return-void"""
+    ext_lines = [
+        "    sput-object v7, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I",
+        "",
+        "    const/16 v3, 0xf",
+        "",
+        "    new-array v3, v3, [[I",
+        "",
+        "    sget-object v1, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I",
+        "",
+        "    const/4 v2, 0x0",
+        "",
+        "    const/4 v4, 0x0",
+        "",
+        "    const/4 v5, 0x7",
+        "",
+        "    invoke-static/range {v1 .. v5}, Ljava/lang/System;->arraycopy(Ljava/lang/Object;ILjava/lang/Object;II)V",
+        "",
+        "    const/16 v1, 0x1e",
+        "",
+    ]
+    for idx in range(7, 15):
+        ext_lines += [
+            "    new-array v2, v1, [I",
+            "",
+            f"    fill-array-data v2, :mod_array_{idx}",
+            "",
+            f"    const/16 v4, 0x{idx:x}",
+            "",
+            "    aput-object v2, v3, v4",
+            "",
+        ]
+    ext_lines += [
+        "    sput-object v3, Lcom/forthblue/pool/rules/LevelRule;->start_angle:[[I",
+        "",
+        "    return-void",
+    ]
+    ext = "\n".join(ext_lines)
     body = body.replace(anchor, ext, 1)
     data = ""
     for i, row in enumerate(rows):
@@ -233,11 +225,11 @@ def main() -> int:
     body = body[: -len("\n.end method")] + data + "\n.end method"
     smali = smali[:start] + body + smali[end:]
     open(path, "w", encoding="utf-8").write(smali)
-    print("LevelRule.<clinit>: start_angle diperluas ke 10 baris")
+    print("LevelRule.<clinit>: start_angle diperluas ke 15 baris")
 
     # --- Aset mod: level baru + atlas judul stage ---
     assets = os.path.join(REPO, "mod-assets")
-    for stage in (7, 8, 9):
+    for stage in range(7, 15):
         src = os.path.join(assets, "data", f"level_stage_{stage}.txt")
         dst = os.path.join(root, "assets", "data", f"level_stage_{stage}.txt")
         shutil.copyfile(src, dst)
@@ -247,7 +239,7 @@ def main() -> int:
                     os.path.join(root, "assets", "menu_button.png"))
     shutil.copyfile(os.path.join(assets, "menu_button.pack"),
                     os.path.join(root, "assets", "menu_button.pack"))
-    print("aset: level_stage_7/8/9 + atlas menu_button terpasang")
+    print("aset: level_stage_7..14 + atlas menu_button terpasang")
 
     # --- Manifest ---
     mpath = root + "/AndroidManifest.xml"
