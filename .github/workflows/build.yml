@@ -3,6 +3,8 @@ name: Build Mod Pool Billiards
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
       - 'build.sh'
       - 'apply_patches.py'
@@ -14,8 +16,8 @@ on:
       - 'tools_make_atlas_v150.py'
       - 'original/**'
       - '.github/workflows/build.yml'
-    tags:
-      - 'v*'
+  tags:
+    - 'v*'
 
 jobs:
   build:
@@ -97,11 +99,12 @@ jobs:
           name: poolbilliards-mod-apk
           path: PoolBilliardsPro-Mod-v1.5.0.apk
 
-      - name: Buat GitHub Release (hanya tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Buat GitHub Release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: Pool Billiards Pro Mod ${{ github.ref_name }}
+          tag_name: v1.5.0-${{ github.run_number }}
+          name: Pool Billiards Pro Mod v1.5.0-${{ github.run_number }}
           body: |
             Mod Pool Billiards Pro 5.3 (versionCode 53, com.forthblue.pool) —
             mod gabung satu APK, tanpa root, tanda tangan sama dengan
@@ -112,36 +115,6 @@ jobs:
             latch fail-closed); hanya mode offline
             (VS Computer, Time, Arcade, Tutorial).
 
-            v1.5.0 (konten baru - fitur & gerbang PvP identik v1.4.2):
-            - Arcade diperluas ke 15 stage: Stage 11/12/13/14/15 BARU
-              (150 level, file level_stage_10..14), masing-masing 30
-              level yang terbukti bisa ditamatkan oleh TestLevels di
-              CI (total level buatan mod: 240, Stage 8-15).
-            - Judul stage 11-15 digambar ke atlas menu_button
-              (region stagetitle10..14); start_angle diperluas ke
-              15 baris; MAX_TABLE LevelScene 10 -> 15.
-            - Gerbang PvP dikembalikan persis ke perilaku v1.4.2:
-              HEAD sempat berisi edit pasca-rilis yang membuat
-              latch PvP selalu false (gerbang tidak pernah aktif);
-              v1.5.0 memulihkannya — PvP tetap mati total.
-
-            v1.4.2 (performa - isi fitur identik v1.4.1):
-            - Gerbang PvP disatukan jadi SATU JALUR berbentuk bool:
-              logika di Keamanan.java, isPVPMode() dibaca sekali per
-              tick lalu men-set bool ModState.pvpLatched yang dibaca
-              semua fitur (dulu sampai 5 panggilan refleksi per tick).
-              Perilaku tidak berubah: PvP tetap mati total.
-
-            v1.4.1 (perbaikan UI saja - isi fitur identik v1.4):
-            - Saklar menu digambar ulang sendiri sebagai pil ON/OFF
-              (hijau ON / abu OFF; ketuk baris atau pil untuk
-              mengubah): saklar Switch bawaan Android tidak tergambar
-              di HP user (HyperOS) sehingga baris menu v1.4 tampil
-              tanpa tombol yang terlihat. Semua saklar kini terlihat
-              jelas; fungsi, penyimpanan setelan, dan gerbang PvP
-              tidak berubah.
-            - v1.4: saklar Auto Play persisten (mesin status
-              AutoTrigger), Arcade Stage 8/9/10 (90 level baru
-              terverifikasi), break khusus, Anti-Scratch Total,
-              Magnet Lubang, Prank VS CPU, menu geser/minimize.
+            Auto-build dari commit ${{ github.sha }} pada branch main.
           files: PoolBilliardsPro-Mod-v1.5.0.apk
+          generate_release_notes: true
