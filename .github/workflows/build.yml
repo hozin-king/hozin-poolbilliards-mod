@@ -1,0 +1,147 @@
+name: Build Mod Pool Billiards
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'build.sh'
+      - 'apply_patches.py'
+      - 'verify.py'
+      - 'mod-src/**'
+      - 'tests/**'
+      - 'mod-assets/**'
+      - 'tools_make_atlas.py'
+      - 'tools_make_atlas_v150.py'
+      - 'original/**'
+      - '.github/workflows/build.yml'
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install platform + build-tools 34 (SDK bawaan runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Unduh apktool 2.10.0
+        run: |
+          curl -sL -o apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          java -jar apktool.jar --version
+
+      - name: Uji konsistensi klon fisika + logika autoplay (JVM)
+        run: |
+          mkdir -p /tmp/simtest
+          javac -encoding UTF-8 -proc:none -d /tmp/simtest \
+            mod-src/com/hozin/poolmod/Sim.java \
+            mod-src/com/hozin/poolmod/Snap.java \
+            mod-src/com/hozin/poolmod/ModState.java \
+            mod-src/com/hozin/poolmod/Ref.java \
+            mod-src/com/hozin/poolmod/Auto.java \
+            mod-src/com/hozin/poolmod/Objective.java \
+            mod-src/com/hozin/poolmod/AutoTrigger.java \
+            mod-src/com/hozin/poolmod/Magnet.java \
+            mod-src/com/hozin/poolmod/Features.java \
+            tests/TestSim.java tests/TestAuto.java tests/TestTrigger.java \
+            tests/TestAntiScratch.java tests/TestMagnet.java \
+            tests/TestPrank.java tests/TestBreak.java \
+            tests/GenLevels.java tests/TestLevels.java
+          java -cp /tmp/simtest com.hozin.poolmod.TestSim
+          java -cp /tmp/simtest com.hozin.poolmod.TestAuto
+          java -cp /tmp/simtest com.hozin.poolmod.TestTrigger
+          java -cp /tmp/simtest com.hozin.poolmod.TestAntiScratch
+          java -cp /tmp/simtest com.hozin.poolmod.TestMagnet
+          java -cp /tmp/simtest com.hozin.poolmod.TestPrank
+          java -cp /tmp/simtest com.hozin.poolmod.TestBreak
+          java -cp /tmp/simtest com.hozin.poolmod.TestLevels mod-assets/data
+
+      - name: Siapkan keystore signing (dari Secrets, di luar tree repo)
+        env:
+          POOL_KEYSTORE_BASE64: ${{ secrets.POOL_KEYSTORE_BASE64 }}
+        run: |
+          echo "$POOL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mod.keystore"
+          echo "POOL_KEYSTORE=$RUNNER_TEMP/mod.keystore" >> "$GITHUB_ENV"
+
+      - name: Build APK mod (gabung)
+        env:
+          APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
+          POOL_STORE_PASS: ${{ secrets.POOL_STORE_PASS }}
+          POOL_KEY_ALIAS: ${{ secrets.POOL_KEY_ALIAS }}
+          POOL_KEY_PASS: ${{ secrets.POOL_KEY_PASS }}
+        run: bash build.sh
+
+      - name: Verifikasi APK final
+        env:
+          APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
+        run: python3 verify.py PoolBilliardsPro-Mod-v1.5.0.apk "original/Pool_Billiards_Pro_5.3.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poolbilliards-mod-apk
+          path: PoolBilliardsPro-Mod-v1.5.0.apk
+
+      - name: Buat GitHub Release (hanya tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pool Billiards Pro Mod ${{ github.ref_name }}
+          body: |
+            Mod Pool Billiards Pro 5.3 (versionCode 53, com.forthblue.pool) —
+            mod gabung satu APK, tanpa root, tanda tangan sama dengan
+            rilis mod sebelumnya (bisa timpa).
+
+            Semua fitur mod MATI TOTAL di mode PvP online
+            (gerbang satu jalur: isPVPMode() sekali per tick di Hooks,
+            latch fail-closed); hanya mode offline
+            (VS Computer, Time, Arcade, Tutorial).
+
+            v1.5.0 (konten baru - fitur & gerbang PvP identik v1.4.2):
+            - Arcade diperluas ke 15 stage: Stage 11/12/13/14/15 BARU
+              (150 level, file level_stage_10..14), masing-masing 30
+              level yang terbukti bisa ditamatkan oleh TestLevels di
+              CI (total level buatan mod: 240, Stage 8-15).
+            - Judul stage 11-15 digambar ke atlas menu_button
+              (region stagetitle10..14); start_angle diperluas ke
+              15 baris; MAX_TABLE LevelScene 10 -> 15.
+            - Gerbang PvP dikembalikan persis ke perilaku v1.4.2:
+              HEAD sempat berisi edit pasca-rilis yang membuat
+              latch PvP selalu false (gerbang tidak pernah aktif);
+              v1.5.0 memulihkannya — PvP tetap mati total.
+
+            v1.4.2 (performa - isi fitur identik v1.4.1):
+            - Gerbang PvP disatukan jadi SATU JALUR berbentuk bool:
+              logika di Keamanan.java, isPVPMode() dibaca sekali per
+              tick lalu men-set bool ModState.pvpLatched yang dibaca
+              semua fitur (dulu sampai 5 panggilan refleksi per tick).
+              Perilaku tidak berubah: PvP tetap mati total.
+
+            v1.4.1 (perbaikan UI saja - isi fitur identik v1.4):
+            - Saklar menu digambar ulang sendiri sebagai pil ON/OFF
+              (hijau ON / abu OFF; ketuk baris atau pil untuk
+              mengubah): saklar Switch bawaan Android tidak tergambar
+              di HP user (HyperOS) sehingga baris menu v1.4 tampil
+              tanpa tombol yang terlihat. Semua saklar kini terlihat
+              jelas; fungsi, penyimpanan setelan, dan gerbang PvP
+              tidak berubah.
+            - v1.4: saklar Auto Play persisten (mesin status
+              AutoTrigger), Arcade Stage 8/9/10 (90 level baru
+              terverifikasi), break khusus, Anti-Scratch Total,
+              Magnet Lubang, Prank VS CPU, menu geser/minimize.
+          files: PoolBilliardsPro-Mod-v1.5.0.apk

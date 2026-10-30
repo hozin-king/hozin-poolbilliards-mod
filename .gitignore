@@ -1,0 +1,7 @@
+work/
+/PoolBilliardsPro-Mod-v*.apk
+*.idsig
+*.keystore
+*.jks
+mod-assets/levels_report_*.txt
+mod-assets/start_angle_rows_*.txt
