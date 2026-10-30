@@ -73,19 +73,35 @@ jobs:
           java -cp /tmp/simtest com.hozin.poolmod.TestBreak
           java -cp /tmp/simtest com.hozin.poolmod.TestLevels mod-assets/data
 
-      - name: Siapkan keystore signing (dari Secrets, di luar tree repo)
+      - name: Siapkan keystore (Secrets atau debug sementara)
         env:
           POOL_KEYSTORE_BASE64: ${{ secrets.POOL_KEYSTORE_BASE64 }}
+          POOL_STORE_PASS: ${{ secrets.POOL_STORE_PASS }}
+          POOL_KEY_ALIAS: ${{ secrets.POOL_KEY_ALIAS }}
+          POOL_KEY_PASS: ${{ secrets.POOL_KEY_PASS }}
         run: |
-          echo "$POOL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mod.keystore"
-          echo "POOL_KEYSTORE=$RUNNER_TEMP/mod.keystore" >> "$GITHUB_ENV"
+          if [ -n "$POOL_KEYSTORE_BASE64" ]; then
+            echo "$POOL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mod.keystore"
+            echo "POOL_KEYSTORE=$RUNNER_TEMP/mod.keystore" >> "$GITHUB_ENV"
+            echo "POOL_STORE_PASS=$POOL_STORE_PASS" >> "$GITHUB_ENV"
+            echo "POOL_KEY_ALIAS=$POOL_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "POOL_KEY_PASS=$POOL_KEY_PASS" >> "$GITHUB_ENV"
+            echo "Using provided keystore from secrets"
+          else
+            echo "No secrets — generating temporary debug keystore"
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/mod.keystore" \
+              -alias modkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Debug, OU=CI, O=Hozin, L=Local, S=Local, C=ID"
+            echo "POOL_KEYSTORE=$RUNNER_TEMP/mod.keystore" >> "$GITHUB_ENV"
+            echo "POOL_STORE_PASS=android" >> "$GITHUB_ENV"
+            echo "POOL_KEY_ALIAS=modkey" >> "$GITHUB_ENV"
+            echo "POOL_KEY_PASS=android" >> "$GITHUB_ENV"
+          fi
 
       - name: Build APK mod (gabung)
         env:
           APKTOOL_JAR: ${{ github.workspace }}/apktool.jar
-          POOL_STORE_PASS: ${{ secrets.POOL_STORE_PASS }}
-          POOL_KEY_ALIAS: ${{ secrets.POOL_KEY_ALIAS }}
-          POOL_KEY_PASS: ${{ secrets.POOL_KEY_PASS }}
         run: bash build.sh
 
       - name: Verifikasi APK final
